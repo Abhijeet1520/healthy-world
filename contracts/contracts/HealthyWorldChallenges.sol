@@ -15,6 +15,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
  * - New ExerciseData struct for exercise-specific metrics (exercise name, rep count, etc.)
  * - Separate mappings and functions to submit/get health data vs. exercise data
  */
+
 contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     // Reference to the WLD token (ERC20) used for staking and rewards
     IERC20 public wldToken;
@@ -53,7 +54,7 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
      * @dev Data structure representing a judge in the system.
      */
     struct Judge {
-        address addr;            // Address of the judge
+     1   address addr;            // Address of the judge
         string name;             // Name or nickname of the judge
         uint256 reputation;      // Arbitrary reputation score
         JudgeStatus status;      // Current status of the judge (Active, Inactive, Suspended)

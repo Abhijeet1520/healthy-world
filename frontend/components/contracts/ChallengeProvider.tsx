@@ -130,6 +130,7 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
             HealthyWorldChallengesABI.abi,
             web3Signer
           );
+          
           setChallengesContract(challengesContractInstance);
           
           const tokenContractInstance = new ethers.Contract(

@@ -109,7 +109,6 @@ contract HealthDataVerification is Ownable, ReentrancyGuard {
         external
         returns (bytes32 submissionId)
     {
-        // Typically, you might allow only the user or a trusted oracle to create data.
         // If you prefer a different rule, adjust as needed:
         require(msg.sender == user || trustedOracles[msg.sender], "Unauthorized submitter");
 
