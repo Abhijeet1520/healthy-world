@@ -146,28 +146,28 @@ export default function Dashboard() {
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-blue-500 text-3xl mb-2">monitoring</span>
-            <p className="font-medium">Track Health</p>
+            <p className="font-medium text-blue-500">Track Health</p>
           </Link>
           <Link 
             href="/challenges" 
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-purple-500 text-3xl mb-2">emoji_events</span>
-            <p className="font-medium">Challenges</p>
+            <p className="font-medium text-blue-500">Challenges</p>
           </Link>
           <Link 
             href="/rewards" 
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-yellow-500 text-3xl mb-2">redeem</span>
-            <p className="font-medium">Rewards</p>
+            <p className="font-medium text-blue-500">Rewards</p>
           </Link>
           <Link 
             href="/profile" 
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-emerald-500 text-3xl mb-2">person</span>
-            <p className="font-medium">Profile</p>
+            <p className="font-medium text-blue-500">Profile</p>
           </Link>
         </div>
       </div>
