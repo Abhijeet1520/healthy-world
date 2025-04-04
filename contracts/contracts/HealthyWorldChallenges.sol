@@ -54,7 +54,7 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
      * @dev Data structure representing a judge in the system.
      */
     struct Judge {
-     1   address addr;            // Address of the judge
+        address addr;            // Address of the judge
         string name;             // Name or nickname of the judge
         uint256 reputation;      // Arbitrary reputation score
         JudgeStatus status;      // Current status of the judge (Active, Inactive, Suspended)
@@ -74,7 +74,7 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         uint256 mindfulMinutes;   // Example: minutes of mindfulness
         string dataSourceType;    // e.g., "AppleWatch", "Fitbit", "manual", "video"
         string dataSourceId;      // Device identifier, or IPFS hash for a video, etc.
-        bytes proofData;          // Arbitrary proof/signed data for verification
+        bytes proofData;        // Arbitrary proof/signed data for verification
     }
 
     /**

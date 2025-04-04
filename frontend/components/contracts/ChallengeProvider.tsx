@@ -12,8 +12,9 @@ import WorldHealthTokenABI from '@/abis/WorldHealthToken.json'
 const CHALLENGES_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CHALLENGES_CONTRACT_ADDRESS || '0x123456789';
 const WLD_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_WLD_TOKEN_ADDRESS || '0x987654321';
 
-// Enums for challenge status and judge status
+// Enums for challenge status, categories and judge status
 enum ChallengeStatus { Active, Judging, Completed, Cancelled }
+enum ChallengeCategory { Common, Exercise, Nutrition }
 enum JudgeStatus { Inactive, Active, Suspended }
 
 // Challenge type
@@ -21,6 +22,8 @@ interface Challenge {
   id: number;
   name: string;
   description: string;
+  category: ChallengeCategory;
+  subType: string;
   startDate: Date;
   endDate: Date;
   minStake: number;
@@ -50,6 +53,16 @@ interface HealthDataSubmission {
   sleepHours: number;
   mindfulMinutes: number;
   dataSourceType: string;
+  dataSourceId: string;
+}
+
+
+interface ExerciseDataSubmission {
+  challengeId: number;
+  timestamp: Date;
+  exerciseName: string;
+  reps: number;
+  sets: number;
 }
 
 // Context type
@@ -68,10 +81,19 @@ interface ChallengeContextType {
     steps: number, 
     waterCups: number, 
     sleepHours: number, 
-    mindfulMinutes: number
+    mindfulMinutes: number,
+    dataSourceType?: string,
+    dataSourceId?: string
+  ) => Promise<boolean>;
+  submitExerciseData: (
+    challengeId: number,
+    exerciseName: string,
+    reps: number,
+    sets: number
   ) => Promise<boolean>;
   claimRewards: (challengeId: number) => Promise<boolean>;
   getHealthDataSubmissions: (challengeId: number) => Promise<HealthDataSubmission[]>;
+  getExerciseDataSubmissions: (challengeId: number) => Promise<ExerciseDataSubmission[]>;
 }
 
 // Create context
@@ -86,8 +108,10 @@ const ChallengeContext = createContext<ChallengeContextType>({
   refreshBalance: async () => {},
   joinChallenge: async () => false,
   submitHealthData: async () => false,
+  submitExerciseData: async () => false,
   claimRewards: async () => false,
   getHealthDataSubmissions: async () => [],
+  getExerciseDataSubmissions: async () => [],
 });
 
 // Hook to use the challenge context
@@ -115,9 +139,10 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
     const initializeProvider = async () => {
       try {
         // Check if ethereum is available (MetaMask or other wallet)
-        if (typeof window !== 'undefined' && window.ethereum) {
+        // We'll type window.ethereum as any to bypass TypeScript errors
+        if (typeof window !== 'undefined' && (window as any).ethereum) {
           // Create Web3Provider from ethereum
-          const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+          const web3Provider = new ethers.providers.Web3Provider((window as any).ethereum);
           setProvider(web3Provider);
           
           // Get signer
@@ -179,15 +204,26 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
         
         if (isJoined) {
           // These would be actual contract calls in a real implementation
-          // For demo purposes, we're using mock data
-          myStake = 50; // 50 WLD tokens
-          myCompletion = Math.random() > 0.5; // Random completion status
+          try {
+            // For this example, we'll assume the contract has a view function to get this data
+            // This may need to be adjusted based on the actual contract implementation
+            const participantStake = await challengesContract.participantStakes(i, signerAddress);
+            myStake = parseFloat(ethers.utils.formatEther(participantStake || 0));
+            
+            // Check if the participant has completed the challenge
+            const participantCompletion = await challengesContract.participantCompletions(i, signerAddress);
+            myCompletion = participantCompletion || false;
+          } catch (error) {
+            console.error('Error getting participant data:', error);
+          }
         }
         
         loadedChallenges.push({
           id: i,
           name: details.name,
           description: details.description,
+          category: details.category,
+          subType: details.subType,
           startDate: new Date(details.startDate.toNumber() * 1000),
           endDate: new Date(details.endDate.toNumber() * 1000),
           minStake: parseFloat(ethers.utils.formatEther(details.minStake)),
@@ -287,14 +323,14 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
     steps: number, 
     waterCups: number, 
     sleepHours: number, 
-    mindfulMinutes: number
+    mindfulMinutes: number,
+    dataSourceType = "manual",
+    dataSourceId = "app"
   ) => {
     if (!challengesContract) return false;
     
     try {
-      // Prepare data for submission
-      const dataSourceType = "manual"; // or could be from wearable
-      const dataSourceId = "app"; // app identifier
+      // Prepare proof data (empty in this case)
       const proofData = "0x"; // no proof for manual entry, would be a signature for wearable data
       
       // Convert sleep hours to integer representation (e.g. 7.5 -> 750)
@@ -317,6 +353,37 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
       return true;
     } catch (error) {
       console.error('Error submitting health data:', error);
+      return false;
+    }
+  };
+  
+  // Function to submit exercise data
+  const submitExerciseData = async (
+    challengeId: number,
+    exerciseName: string,
+    reps: number,
+    sets: number
+  ) => {
+    if (!challengesContract) return false;
+    
+    try {
+      // Prepare proof data (empty in this case)
+      const proofData = "0x"; // no proof for manual entry
+      
+      // Submit data to contract
+      const tx = await challengesContract.submitExerciseData(
+        challengeId,
+        exerciseName,
+        reps,
+        sets,
+        proofData
+      );
+      
+      await tx.wait();
+      
+      return true;
+    } catch (error) {
+      console.error('Error submitting exercise data:', error);
       return false;
     }
   };
@@ -362,13 +429,46 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
           waterCups: data.waterCups.toNumber(),
           sleepHours: data.sleepHours.toNumber() / 100, // Convert from integer representation
           mindfulMinutes: data.mindfulMinutes.toNumber(),
-          dataSourceType: data.dataSourceType
+          dataSourceType: data.dataSourceType,
+          dataSourceId: data.dataSourceId
         });
       }
       
       return submissions;
     } catch (error) {
       console.error('Error getting health data submissions:', error);
+      return [];
+    }
+  };
+  
+  // Function to get exercise data submissions for a challenge
+  const getExerciseDataSubmissions = async (challengeId: number): Promise<ExerciseDataSubmission[]> => {
+    if (!challengesContract || !signer) return [];
+    
+    try {
+      const signerAddress = await signer.getAddress();
+      
+      // Get count of exercise data submissions
+      const count = await challengesContract.getExerciseDataCount(challengeId, signerAddress);
+      
+      // Load each submission
+      const submissions: ExerciseDataSubmission[] = [];
+      
+      for (let i = 0; i < count; i++) {
+        const data = await challengesContract.getExerciseData(challengeId, signerAddress, i);
+        
+        submissions.push({
+          challengeId,
+          timestamp: new Date(data.timestamp.toNumber() * 1000),
+          exerciseName: data.exerciseName,
+          reps: data.reps.toNumber(),
+          sets: data.sets.toNumber()
+        });
+      }
+      
+      return submissions;
+    } catch (error) {
+      console.error('Error getting exercise data submissions:', error);
       return [];
     }
   };
@@ -382,6 +482,8 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
           id: 0,
           name: '10K Steps Challenge',
           description: 'Complete 10,000 steps daily for 5 consecutive days. Boost your cardiovascular health!',
+          category: ChallengeCategory.Common,
+          subType: 'steps',
           startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
           endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),    // 7 days from now
           minStake: 50,
@@ -397,6 +499,8 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
           id: 1,
           name: 'Hydration Hero',
           description: 'Drink 8 cups of water daily for 7 consecutive days. Stay hydrated for optimal health!',
+          category: ChallengeCategory.Nutrition,
+          subType: 'water',
           startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000), // 10 days ago
           endDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),    // 4 days from now
           minStake: 100,
@@ -412,6 +516,8 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
           id: 2,
           name: 'Meditation Master',
           description: 'Complete 10 minutes of mindfulness daily for a week. Improve your mental well-being!',
+          category: ChallengeCategory.Common,
+          subType: 'mindfulness',
           startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
           endDate: new Date(Date.now() + 9 * 24 * 60 * 60 * 1000),    // 9 days from now
           minStake: 75,
@@ -427,6 +533,8 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
           id: 3,
           name: 'Weekly Weight Training',
           description: 'Complete 3 strength training sessions this week and track your results.',
+          category: ChallengeCategory.Exercise,
+          subType: 'strength',
           startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
           endDate: new Date(Date.now() - 23 * 24 * 60 * 60 * 1000),   // 23 days ago (completed)
           minStake: 200,
@@ -463,8 +571,10 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
       refreshBalance,
       joinChallenge,
       submitHealthData,
+      submitExerciseData,
       claimRewards,
       getHealthDataSubmissions,
+      getExerciseDataSubmissions,
     }}>
       {children}
     </ChallengeContext.Provider>
