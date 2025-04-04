@@ -1,3 +1,5 @@
+# server.py
+
 import os
 import uuid
 import shutil
@@ -9,91 +11,93 @@ import uvicorn
 from processor import PoseProcessor
 
 app = FastAPI(
-    title="Pose Detection & Rep Counting API",
-    description="Upload a video, receive rep counts, optionally get an annotated .mp4.",
+    title="Exercise Pose Detection & Rep Counting API",
+    description="Upload a video, choose an exercise (bicep-curl, squat, pushup), receive rep counts. Optionally get an annotated MP4.",
     version="1.0.0"
 )
 
-# We create one global PoseProcessor, then initialize it on startup
+# Create a single PoseProcessor instance, then initialize at startup
 pose_processor = PoseProcessor()
 
 @app.on_event("startup")
 def on_startup():
     """
-    Initialize the Mediapipe Pose model once at server start.
+    Initialize the MediaPipe Pose model once at server start.
     """
     pose_processor.initialize()
 
 @app.post("/analyze-video")
 def analyze_video(
     file: UploadFile = File(...),
-    exercise_name: str = Form("squat"),
-    min_angle: float = Form(70.0),
-    max_angle: float = Form(160.0),
-    rep_threshold: float = Form(0.8),
+    exercise_id: str = Form("bicep-curl"),
     highlight_output: bool = Form(False)
 ):
     """
-    POST an exercise video to /analyze-video with fields:
-      - file: (required) The video file (e.g. .mp4, .mov, etc.)
-      - exercise_name: (default="squat")
-      - min_angle: (default=70.0)
-      - max_angle: (default=160.0)
-      - rep_threshold: fraction of range-of-motion needed for rep (default=0.8)
-      - highlight_output: if True, returns an annotated .mp4 file; otherwise returns JSON stats.
+    POST a video to /analyze-video with form fields:
+      - file: the .mp4 / .mov, etc. (required)
+      - exercise_id: one of ["bicep-curl", "squat", "pushup"] (default = "bicep-curl")
+      - highlight_output: boolean, if True => returns an annotated .mp4 file
+        rather than JSON
+    Returns either JSON stats or the annotated .mp4 file.
     """
-    # Validate the file extension
-    allowed_ext = (".mp4", ".mov", ".avi", ".mkv")
+    # Validate file extension
+    allowed_exts = (".mp4", ".mov", ".avi", ".mkv")
     fname_lower = file.filename.lower()
-    if not any(fname_lower.endswith(ext) for ext in allowed_ext):
-        raise HTTPException(status_code=400, detail="Unsupported video format.")
+    if not any(fname_lower.endswith(ext) for ext in allowed_exts):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Must be one of {allowed_exts}."
+        )
 
-    # Save the file to a temporary location
+    # Save the file to a temporary path
     file_id = uuid.uuid4().hex
-    input_path = f"/tmp/input_{file_id}.mp4"
-    with open(input_path, "wb") as f:
+    tmp_input_path = f"/tmp/input_{file_id}.mp4"
+    with open(tmp_input_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Set the exercise parameters into the PoseProcessor
-    params = {
-        "exercise_name": exercise_name,
-        "min_angle": min_angle,
-        "max_angle": max_angle,
-        "rep_threshold": rep_threshold
-    }
-    pose_processor.set_exercise_params(params)
+    # Set the chosen exercise
+    try:
+        pose_processor.set_exercise(exercise_id)
+    except ValueError as e:
+        # If the user provided an invalid exercise_id, remove file and throw 400
+        os.remove(tmp_input_path)
+        raise HTTPException(status_code=400, detail=str(e))
 
-    # If highlight_output is requested, define where we'll save it
-    output_path = f"/tmp/output_{file_id}.mp4" if highlight_output else None
+    # If highlight is requested, define an output path
+    tmp_output_path = None
+    if highlight_output:
+        tmp_output_path = f"/tmp/output_{file_id}.mp4"
 
     try:
         results = pose_processor.process_video(
-            video_path=input_path,
+            video_path=tmp_input_path,
             highlight_output=highlight_output,
-            output_path=output_path
+            output_path=tmp_output_path
         )
     except Exception as e:
-        # Clean up temp input file if something fails
-        if os.path.exists(input_path):
-            os.remove(input_path)
+        # On any processing error, clean up input file
+        if os.path.exists(tmp_input_path):
+            os.remove(tmp_input_path)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Remove the input file
+        if os.path.exists(tmp_input_path):
+            os.remove(tmp_input_path)
 
-    # Remove the input file
-    if os.path.exists(input_path):
-        os.remove(input_path)
-
-    # If we produced an annotated output, return that as a file
     if highlight_output:
-        if not os.path.exists(output_path):
-            raise HTTPException(status_code=500, detail="Video processing failed.")
+        # If we have an annotated video, return it as a file
+        if not os.path.exists(tmp_output_path):
+            raise HTTPException(status_code=500, detail="Annotation output not found.")
+        # Return the annotated MP4
         return FileResponse(
-            path=output_path,
+            path=tmp_output_path,
             media_type="video/mp4",
             filename="annotated_output.mp4"
         )
-
-    # Otherwise, return JSON with the stats
-    return JSONResponse(content=results)
+    else:
+        # Return JSON with the stats
+        return JSONResponse(content=results)
 
 if __name__ == "__main__":
+    # For local testing:
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
