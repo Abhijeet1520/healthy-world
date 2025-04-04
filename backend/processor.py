@@ -5,60 +5,70 @@ import mediapipe as mp
 # EXERCISES dictionary
 EXERCISES = {
     "bicep-curl": {
-        "name": "Bicep Curl",
-        "description": "Curl your arm upward, keeping your upper arm still",
+        "name": "Bicep Curl (Both Arms)",
+        "description": "Curl both arms upward, keeping your upper arms still",
         "targetAngles": {"start": 160, "end": 60},
-        "joints": [11, 13, 15]  # Left arm: Shoulder=11, Elbow=13, Wrist=15
+        "joints": [        # Two sets: left arm and right arm
+            [11, 13, 15],  # Left arm:  shoulder=11, elbow=13, wrist=15
+            [12, 14, 16]   # Right arm: shoulder=12, elbow=14, wrist=16
+        ]
     },
     "squat": {
         "name": "Squat",
         "description": "Lower your body by bending your knees, keeping your back straight",
         "targetAngles": {"start": 170, "end": 90},
-        "joints": [24, 26, 28]  # Left leg: Hip=24, Knee=26, Ankle=28
+        "joints": [
+            [24, 26, 28]  # Left leg: hip=24, knee=26, ankle=28
+        ]
     },
     "pushup": {
         "name": "Push-up",
         "description": "Lower your body by bending your elbows, keeping your body straight",
         "targetAngles": {"start": 160, "end": 90},
-        "joints": [12, 14, 16]  # Right arm: Shoulder=12, Elbow=14, Wrist=16
+        "joints": [
+            [12, 14, 16]  # Right arm: shoulder=12, elbow=14, wrist=16
+        ]
     },
 }
 
 
 class PoseProcessor:
     """
-    A PoseProcessor that uses MediaPipe to detect poses and count reps for
-    bicep curls, squats, pushups, etc., based on the user's choice.
+    PoseProcessor that uses MediaPipe to detect poses and count reps.
+    - Bicep curl tracks both arms, storing separate left/right attempts and completions.
+    - By default, 80% partial range-of-motion is required to record an attempt.
     """
 
-    def __init__(self):
+    def __init__(self, threshold_fraction: float = 0.8):
         """
-        Initially we have no loaded model and no exercise set.
-        We'll initialize them in initialize() and set_exercise().
+        :param threshold_fraction: fraction of the range (start_angle - end_angle)
+                                   that must be reached for an attempt to count.
+                                   e.g. 0.8 => must reach 80% of the way down.
         """
         self.initialized = False
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
-
-        # MediaPipe pose instance (initialized in initialize())
         self.pose = None
 
-        # The chosen exercise and its angle data
         self.current_exercise_id = "bicep-curl"
         self.start_angle = 160
         self.end_angle = 60
-        self.joints = [11, 13, 15]
+        self.joint_sets = [[11, 13, 15], [12, 14, 16]]
 
-        # Rep counting variables
-        # is_going_up => if True, we are in the "flexed" or "down" motion,
-        # waiting for the user to come back up to start position.
-        self.is_going_up = False
-        self.rep_count = 0
+        # We define a partial range threshold fraction for attempts
+        self.threshold_fraction = threshold_fraction
+
+        # We'll keep a small "state" for each set of joints
+        # Each item tracks: is_going_up, attempt_count, completion_count
+        # Example for left arm, right arm
+        self.arm_states = []
+
+        # We'll keep an event log for frames where attempts/completions occur
+        self.rep_log = []
+        # Each entry: { "frame": X, "arm_index": 0 or 1, "type": "attempt"|"complete" }
 
     def initialize(self):
-        """
-        Load/initialize Mediapipe Pose solution once.
-        """
+        """Load/initialize MediaPipe Pose once."""
         self.pose = self.mp_pose.Pose(
             static_image_mode=False,
             model_complexity=1,
@@ -70,8 +80,8 @@ class PoseProcessor:
 
     def set_exercise(self, exercise_id: str):
         """
-        Choose which exercise data to use (bicep-curl, squat, pushup, etc.)
-        Resets the rep counter and is_going_up state.
+        Choose which exercise data to use (e.g. "bicep-curl", "squat", "pushup").
+        Resets rep counters and states.
         """
         if exercise_id not in EXERCISES:
             raise ValueError(f"Unknown exercise_id '{exercise_id}'. "
@@ -80,24 +90,33 @@ class PoseProcessor:
         self.current_exercise_id = exercise_id
         exercise_data = EXERCISES[exercise_id]
 
-        # Extract start/end angles and joints from the dictionary
         self.start_angle = exercise_data["targetAngles"]["start"]
         self.end_angle = exercise_data["targetAngles"]["end"]
-        self.joints = exercise_data["joints"]
+        self.joint_sets = exercise_data["joints"]
 
-        # Reset the rep counting variables
-        self.is_going_up = False
-        self.rep_count = 0
+        # For each set of joints, define an arm_state
+        self.arm_states = []
+        for _ in self.joint_sets:
+            self.arm_states.append({
+                "is_going_up": False,   # whether we've gone below thresholdAngle
+                "attempt_count": 0,
+                "completion_count": 0
+            })
 
-    def process_video(self, video_path: str, highlight_output: bool = False, output_path: str = None) -> dict:
+        # Clear the log
+        self.rep_log = []
+
+    def process_video(self, video_path: str,
+                      highlight_output: bool = False,
+                      output_path: str = None) -> dict:
         """
-        Process the given video file, detect the chosen joint angle,
-        and count reps using the 'start_angle' and 'end_angle' logic from the TS snippet.
+        Process the given video file, compute angles for each set of joints,
+        track partial-threshold attempts and completions for each arm set.
 
-        :param video_path: Path to an input .mp4 or other supported file.
-        :param highlight_output: If True, draws pose skeleton and angle info on an output video.
-        :param output_path: Path to save the annotated video if highlight_output=True.
-        :return: A dictionary of results (exercise name, total reps, frames processed, etc.)
+        :param video_path: Path to an input .mp4 or other file.
+        :param highlight_output: If True, draws the skeleton + angle info on each frame, saved to output_path.
+        :param output_path: If highlight_output=True, path to write the annotated .mp4 file.
+        :return: Dictionary with final counts, logs, etc.
         """
         if not self.initialized or not self.pose:
             raise RuntimeError("PoseProcessor not initialized. Call initialize() first.")
@@ -110,49 +129,43 @@ class PoseProcessor:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        # Optional VideoWriter for annotated output
         writer = None
         if highlight_output and output_path:
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-        frames_processed = 0
+        frame_index = 0
 
         while True:
             success, frame = cap.read()
             if not success:
                 break  # End of video
 
-            # Convert BGR to RGB for MediaPipe
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = self.pose.process(frame_rgb)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self.pose.process(rgb_frame)
 
-            # Default angle is 0 if we can't compute it
-            angle = 0.0
-
+            angles = []
             if results.pose_landmarks:
-                # Extract the landmarks we need for the current exercise
                 landmarks = results.pose_landmarks.landmark
-
-                # E.g. for bicep curl: p1=11(shoulder), p2=13(elbow), p3=15(wrist)
-                p1, p2, p3 = self.joints
-                angle = self._compute_angle(landmarks, width, height, p1, p2, p3)
-
-                # Update the rep count logic
-                self._update_rep_count(angle)
+                # For each set of joints, compute angle
+                for idx, (p1, p2, p3) in enumerate(self.joint_sets):
+                    angle = self._compute_angle(landmarks, width, height, p1, p2, p3)
+                    angles.append(angle)
+                    self._update_rep_count(angle, idx, frame_index)
 
             # If highlight requested, overlay skeleton & info on the frame
             if writer:
-                # Draw the skeleton
                 self.mp_drawing.draw_landmarks(
                     frame,
                     results.pose_landmarks,
                     self.mp_pose.POSE_CONNECTIONS
                 )
-
-                # Show angle + rep count
-                text = (f"Ex: {self.current_exercise_id} | "
-                        f"Angle: {int(angle)} | Reps: {self.rep_count}")
+                # Build a text string with angles for each arm, e.g. "120,110"
+                angle_str = ",".join(f"{int(a)}" for a in angles)
+                # Build total completions so far
+                left_comp = self.arm_states[0]["completion_count"] if len(self.arm_states) > 0 else 0
+                right_comp = self.arm_states[1]["completion_count"] if len(self.arm_states) > 1 else 0
+                text = f"{self.current_exercise_id} | Angles: {angle_str} | L:{left_comp} R:{right_comp}"
                 cv2.putText(
                     frame,
                     text,
@@ -162,32 +175,51 @@ class PoseProcessor:
                     (0, 255, 0),
                     2
                 )
-
                 writer.write(frame)
 
-            frames_processed += 1
+            frame_index += 1
 
         cap.release()
         if writer:
             writer.release()
 
-        # Build final result dictionary
         exercise_data = EXERCISES[self.current_exercise_id]
+
+        # Summaries: left, right, total
+        left_attempts = self.arm_states[0]["attempt_count"] if len(self.arm_states) > 0 else 0
+        left_completions = self.arm_states[0]["completion_count"] if len(self.arm_states) > 0 else 0
+        right_attempts = self.arm_states[1]["attempt_count"] if len(self.arm_states) > 1 else 0
+        right_completions = self.arm_states[1]["completion_count"] if len(self.arm_states) > 1 else 0
+
         return {
             "exercise_id": self.current_exercise_id,
             "exercise_name": exercise_data["name"],
             "description": exercise_data["description"],
-            "total_reps": self.rep_count,
-            "frames_processed": frames_processed,
+
+            # separate attempts & completions
+            "left_attempts": left_attempts,
+            "left_completions": left_completions,
+            "right_attempts": right_attempts,
+            "right_completions": right_completions,
+
+            # total attempts & completions
+            "total_attempts": left_attempts + right_attempts,
+            "total_completions": left_completions + right_completions,
+
+            # frames processed + angles
+            "frames_processed": frame_index,
             "angle_start": self.start_angle,
-            "angle_end": self.end_angle
+            "angle_end": self.end_angle,
+            "threshold_fraction": self.threshold_fraction,
+
+            # event log of attempts/completions
+            "rep_log": self.rep_log
         }
 
     def _compute_angle(self, landmarks, width: int, height: int, p1: int, p2: int, p3: int) -> float:
         """
-        Compute the angle (in degrees) formed by the three landmark indices p1->p2->p3.
-        This matches the TS code approach:
-          angle = abs(atan2(...p3...) - atan2(...p1...)) * (180/pi)
+        Compute angle (in degrees) formed by p1->p2->p3,
+        using the approach from your TS code snippet.
         """
         x1, y1 = landmarks[p1].x * width, landmarks[p1].y * height
         x2, y2 = landmarks[p2].x * width, landmarks[p2].y * height
@@ -198,31 +230,47 @@ class PoseProcessor:
             math.atan2(y1 - y2, x1 - x2)
         )
         angle_degrees = angle_radians * (180 / math.pi)
-
-        # Some angles might go beyond 180 if we measure the reflex angle,
-        # but for typical exercises we usually want 0..180 range.
-        # If you want the full range, keep as is.
-        # If you prefer a max of 180, do:
-        #   if angle_degrees > 180: angle_degrees = 360 - angle_degrees
         return angle_degrees
 
-    def _update_rep_count(self, angle: float):
+    def _update_rep_count(self, angle: float, arm_index: int, frame_index: int):
         """
-        Follows the same logic from the TS code snippet:
+        For each arm, we see if:
+          - We pass below the 'thresholdAngle' => 'attempt'
+          - Then we pass back above start_angle => 'complete'
 
-        - let startAngle = self.start_angle
-        - let endAngle   = self.end_angle
-        - if not isGoingUp and angle <= endAngle => isGoingUp = True
-        - else if isGoingUp and angle >= startAngle => isGoingUp = False, rep_count++
+        thresholdAngle = start_angle - threshold_fraction * (start_angle - end_angle)
+        e.g. if start=160, end=60 => range=100 => thresholdFraction=0.8 => thresholdAngle=160 - 0.8*100=80
+        So if angle <= 80 => attempt,
+        if angle >= 160 => complete.
         """
+        arm_state = self.arm_states[arm_index]
+
         start_angle = self.start_angle
         end_angle = self.end_angle
+        fraction = self.threshold_fraction
 
-        # Going "down" (closing angle)
-        if not self.is_going_up and angle <= end_angle:
-            self.is_going_up = True
+        # The angle needed for an attempt
+        full_range = start_angle - end_angle
+        threshold_angle = start_angle - fraction * full_range  # e.g. 160 - 0.8*(100)=80
 
-        # Going "up" (opening angle)
-        elif self.is_going_up and angle >= start_angle:
-            self.is_going_up = False
-            self.rep_count += 1
+        if not arm_state["is_going_up"] and angle <= threshold_angle:
+            # user has gone below threshold => attempt
+            arm_state["is_going_up"] = True
+            arm_state["attempt_count"] += 1
+            self.rep_log.append({
+                "frame": frame_index,
+                "arm_index": arm_index,
+                "type": "attempt",
+                "angle": angle
+            })
+
+        elif arm_state["is_going_up"] and angle >= start_angle:
+            # user returned above start => complete
+            arm_state["is_going_up"] = False
+            arm_state["completion_count"] += 1
+            self.rep_log.append({
+                "frame": frame_index,
+                "arm_index": arm_index,
+                "type": "complete",
+                "angle": angle
+            })
