@@ -10,46 +10,26 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
  * @dev This contract manages a system of health/fitness challenges. Users can stake tokens to participate,
  *      judges can verify completion, and participants can claim rewards if they successfully complete.
  *
- * New in this version:
- * - Added an enum `ChallengeCategory` for the challenge's category (Common, Exercise, etc.)
- * - Added a `subType` string to further classify the challenge within that category
+ * New additions for better organization:
+ * - Existing HealthData struct for general metrics (steps, water, etc.)
+ * - New ExerciseData struct for exercise-specific metrics (exercise name, rep count, etc.)
+ * - Separate mappings and functions to submit/get health data vs. exercise data
  */
 contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     // Reference to the WLD token (ERC20) used for staking and rewards
     IERC20 public wldToken;
 
-    /**
-     * @dev Category of the challenge:
-     * - Common   = 0
-     * - Exercise = 1
-     * - Nutrition = 2
-     * - (Feel free to add more as needed)
-     */
+    // Enumerations
     enum ChallengeCategory { Common, Exercise, Nutrition }
-
-    /**
-     * @dev ChallengeStatus:
-     *  Active    - Challenge is ongoing, participants can join, submit data, etc.
-     *  Judging   - Challenge can be moved to this state if needed for special logic (optional).
-     *  Completed - Challenge is finished, participants can claim rewards.
-     *  Cancelled - Challenge was cancelled, and stakes are refunded.
-     */
     enum ChallengeStatus { Active, Judging, Completed, Cancelled }
-
-    /**
-     * @dev JudgeStatus:
-     *  Inactive  - Judge is in the system but not active for new challenges.
-     *  Active    - Judge is active and can verify completions.
-     *  Suspended - Judge is temporarily suspended from verifying.
-     */
     enum JudgeStatus { Inactive, Active, Suspended }
 
     /**
      * @dev Data structure representing a challenge in the system.
      *
-     * The new fields are:
-     * - category  (enum ChallengeCategory) - a fixed set of categories for the challenge
-     * - subType   (string)                - a user-specified subtype or variation
+     * Key fields:
+     * - category: one of the enumerated ChallengeCategory values
+     * - subType: user-defined subtype (e.g., "pushups" if category=Exercise)
      */
     struct Challenge {
         uint256 id;                         // Unique challenge ID
@@ -80,8 +60,8 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Data structure for a participant's health data submission.
-     * Example: steps, water intake, or even a pointer to off-chain data like a video IPFS hash.
+     * @dev HealthData is for general health metrics like steps, water intake, etc.
+     *      This was in the previous version. We keep it for broad-based challenges.
      */
     struct HealthData {
         uint256 challengeId;      // Which challenge this data is for
@@ -96,6 +76,20 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         bytes proofData;          // Arbitrary proof/signed data for verification
     }
 
+    /**
+     * @dev ExerciseData is specifically for exercise challenges. It can store data
+     *      like exercise name (bicep-curl, pushup, squat) and rep counts.
+     */
+    struct ExerciseData {
+        uint256 challengeId;      // Which challenge this data is for
+        address participant;      // Who submitted the data
+        uint256 timestamp;        // When it was submitted
+        string exerciseName;      // e.g., "pushup"
+        uint256 reps;             // e.g., total reps completed
+        uint256 sets;             // e.g., number of sets
+        bytes proofData;          // Arbitrary proof (video link, signature, etc.)
+    }
+
     // A sequential ID assigned to each new challenge
     uint256 public challengeCount;
 
@@ -108,6 +102,9 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
 
     // Health data submissions: challengeId => participant => array of HealthData
     mapping(uint256 => mapping(address => HealthData[])) public healthDataSubmissions;
+
+    // Exercise data submissions: challengeId => participant => array of ExerciseData
+    mapping(uint256 => mapping(address => ExerciseData[])) public exerciseDataSubmissions;
 
     /**
      * @dev verifications[chId][participant][judge] = bool (did judge approve participant)
@@ -134,6 +131,8 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
 
     event ChallengeJoined(uint256 indexed challengeId, address indexed participant, uint256 stakeAmount);
     event HealthDataSubmitted(uint256 indexed challengeId, address indexed participant, uint256 timestamp);
+    event ExerciseDataSubmitted(uint256 indexed challengeId, address indexed participant, uint256 timestamp);
+
     event JudgeAdded(address indexed judge, string name);
     event JudgeStatusChanged(address indexed judge, JudgeStatus status);
     event ChallengeVerified(uint256 indexed challengeId, address indexed participant, address indexed judge, bool approved);
@@ -150,17 +149,8 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Create a new challenge with parameters such as name, category, start/end date, min stake, and assigned judges.
-     *
-     * New parameters vs. previous version:
-     * - `_category`  (enum ChallengeCategory): A fixed set of categories (Common, Exercise, etc.)
-     * - `_subType`   (string): Arbitrary user-defined subtype or variation within that category.
-     *
-     * Requirements:
-     * - `_startDate` > current block time
-     * - `_endDate` > `_startDate`
-     * - `_minStake` > 0
-     * - Each address in `_judges` must already exist and have status == JudgeStatus.Active
+     * @dev Create a new challenge.
+     *      Category can be (Common, Exercise, Nutrition), plus a user-defined subType for specifics.
      */
     function createChallenge(
         string memory _name,
@@ -226,7 +216,8 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Submit health data for a challenge. (E.g., steps, water, or even a pointer to a video.)
+     * @dev Submit health data for general health-oriented challenges (e.g. steps, water intake).
+     *      This function stores HealthData.
      *
      * Requirements:
      * - Challenge must be Active
@@ -250,7 +241,6 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         require(block.timestamp <= challenge.endDate, "Challenge has ended");
         require(challenge.participantStakes[msg.sender] > 0, "Not a participant");
 
-        // Build the HealthData record
         HealthData memory data = HealthData({
             challengeId: _challengeId,
             participant: msg.sender,
@@ -264,10 +254,44 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
             proofData: _proofData
         });
 
-        // Store the data submission
         healthDataSubmissions[_challengeId][msg.sender].push(data);
 
         emit HealthDataSubmitted(_challengeId, msg.sender, block.timestamp);
+    }
+
+    /**
+     * @dev Submit exercise data specifically for an Exercise-type challenge
+     *      (e.g., "pushup", "bicep-curl", number of reps, sets, etc.).
+     *
+     * Requirements are the same as submitHealthData.
+     */
+    function submitExerciseData(
+        uint256 _challengeId,
+        string memory _exerciseName,
+        uint256 _reps,
+        uint256 _sets,
+        bytes memory _proofData
+    ) external {
+        Challenge storage challenge = challenges[_challengeId];
+
+        require(challenge.status == ChallengeStatus.Active, "Challenge is not active");
+        require(block.timestamp >= challenge.startDate, "Challenge has not started");
+        require(block.timestamp <= challenge.endDate, "Challenge has ended");
+        require(challenge.participantStakes[msg.sender] > 0, "Not a participant");
+
+        ExerciseData memory data = ExerciseData({
+            challengeId: _challengeId,
+            participant: msg.sender,
+            timestamp: block.timestamp,
+            exerciseName: _exerciseName,
+            reps: _reps,
+            sets: _sets,
+            proofData: _proofData
+        });
+
+        exerciseDataSubmissions[_challengeId][msg.sender].push(data);
+
+        emit ExerciseDataSubmitted(_challengeId, msg.sender, block.timestamp);
     }
 
     /**
@@ -501,7 +525,14 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Returns a specific HealthData entry for a participant in a challenge.
+     * @dev Returns the number of exercise data submissions for a participant in a challenge.
+     */
+    function getExerciseDataCount(uint256 _challengeId, address _participant) external view returns (uint256) {
+        return exerciseDataSubmissions[_challengeId][_participant].length;
+    }
+
+    /**
+     * @dev Returns a specific HealthData entry for a participant in a challenge (partial fields shown).
      */
     function getHealthData(
         uint256 _challengeId,
@@ -527,6 +558,32 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
             data.sleepHours,
             data.mindfulMinutes,
             data.dataSourceType
+        );
+    }
+
+    /**
+     * @dev Returns a specific ExerciseData entry for a participant in a challenge (partial fields shown).
+     */
+    function getExerciseData(
+        uint256 _challengeId,
+        address _participant,
+        uint256 _index
+    )
+        external
+        view
+        returns (
+            uint256 timestamp,
+            string memory exerciseName,
+            uint256 reps,
+            uint256 sets
+        )
+    {
+        ExerciseData memory data = exerciseDataSubmissions[_challengeId][_participant][_index];
+        return (
+            data.timestamp,
+            data.exerciseName,
+            data.reps,
+            data.sets
         );
     }
 }
