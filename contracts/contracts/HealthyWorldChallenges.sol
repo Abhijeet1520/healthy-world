@@ -10,16 +10,22 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
  * @dev This contract manages a system of health/fitness challenges. Users can stake tokens to participate,
  *      judges can verify completion, and participants can claim rewards if they successfully complete.
  *
- * Features:
- * - Create challenges with a start date, end date, min stake.
- * - Users join by staking WLD tokens.
- * - Health data can be submitted (e.g., steps, water intake, or any metric).
- * - Judges verify completion.
- * - Rewards are distributed to successful participants after the challenge ends.
+ * New in this version:
+ * - Added an enum `ChallengeCategory` for the challenge's category (Common, Exercise, etc.)
+ * - Added a `subType` string to further classify the challenge within that category
  */
 contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     // Reference to the WLD token (ERC20) used for staking and rewards
     IERC20 public wldToken;
+
+    /**
+     * @dev Category of the challenge:
+     * - Common   = 0
+     * - Exercise = 1
+     * - Nutrition = 2
+     * - (Feel free to add more as needed)
+     */
+    enum ChallengeCategory { Common, Exercise, Nutrition }
 
     /**
      * @dev ChallengeStatus:
@@ -41,24 +47,26 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     /**
      * @dev Data structure representing a challenge in the system.
      *
-     * The poolSize is a sum of all staked tokens by participants.
-     * The participantStakes and participantCompletions mappings track how much each participant staked,
-     * and whether they have officially been verified as completed by enough judges.
+     * The new fields are:
+     * - category  (enum ChallengeCategory) - a fixed set of categories for the challenge
+     * - subType   (string)                - a user-specified subtype or variation
      */
     struct Challenge {
-        uint256 id;                  // Unique challenge ID
-        string name;                 // Short name/title of the challenge
-        string description;          // Description/purpose of the challenge
-        uint256 startDate;           // Unix timestamp when challenge starts
-        uint256 endDate;             // Unix timestamp when challenge ends
-        uint256 minStake;            // Minimum required stake in WLD tokens
-        uint256 poolSize;            // Total amount of WLD tokens staked by participants
-        address[] participants;      // Array of all participants
-        mapping(address => uint256) participantStakes;      // Tracks how much each participant staked
+        uint256 id;                         // Unique challenge ID
+        string name;                        // Short name/title of the challenge
+        string description;                 // Description/purpose of the challenge
+        ChallengeCategory category;         // Which category this challenge belongs to
+        string subType;                     // Subtype for more specific classification
+        uint256 startDate;                  // Unix timestamp when challenge starts
+        uint256 endDate;                    // Unix timestamp when challenge ends
+        uint256 minStake;                   // Minimum required stake in WLD tokens
+        uint256 poolSize;                   // Total amount of WLD tokens staked by participants
+        address[] participants;             // Array of all participants
+        mapping(address => uint256) participantStakes;      // How much each participant staked
         mapping(address => bool) participantCompletions;    // True if participant is verified as completed
-        address[] judges;            // Addresses of judges assigned to this challenge
-        ChallengeStatus status;      // Current status of the challenge
-        uint256 completedParticipants;  // Number of participants verified as completed
+        address[] judges;                   // Addresses of judges assigned to this challenge
+        ChallengeStatus status;             // Current status of the challenge
+        uint256 completedParticipants;      // Number of participants verified as completed
     }
 
     /**
@@ -73,8 +81,7 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
 
     /**
      * @dev Data structure for a participant's health data submission.
-     *
-     * Example: steps, water intake, or even a video reference if you want to store a pointer to off-chain data.
+     * Example: steps, water intake, or even a pointer to off-chain data like a video IPFS hash.
      */
     struct HealthData {
         uint256 challengeId;      // Which challenge this data is for
@@ -89,19 +96,21 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         bytes proofData;          // Arbitrary proof/signed data for verification
     }
 
-    // Maps a challenge ID to the Challenge struct
+    // A sequential ID assigned to each new challenge
     uint256 public challengeCount;
+
+    // Maps challenge ID => Challenge struct
     mapping(uint256 => Challenge) public challenges;
 
-    // Maps a judge's address to the Judge struct
+    // Maps address => Judge struct
     mapping(address => Judge) public judges;
     address[] public judgeAddresses;
 
-    // Health data submissions: challengeId => participant => array of submissions
+    // Health data submissions: challengeId => participant => array of HealthData
     mapping(uint256 => mapping(address => HealthData[])) public healthDataSubmissions;
 
     /**
-     * @dev verifications[chId][participant][judge] = whether that judge approved the participant's completion
+     * @dev verifications[chId][participant][judge] = bool (did judge approve participant)
      */
     mapping(uint256 => mapping(address => mapping(address => bool))) public verifications;
 
@@ -114,7 +123,15 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     //         EVENTS
     // -----------------------
 
-    event ChallengeCreated(uint256 indexed challengeId, string name, uint256 startDate, uint256 endDate);
+    event ChallengeCreated(
+        uint256 indexed challengeId,
+        string name,
+        uint256 startDate,
+        uint256 endDate,
+        ChallengeCategory category,
+        string subType
+    );
+
     event ChallengeJoined(uint256 indexed challengeId, address indexed participant, uint256 stakeAmount);
     event HealthDataSubmitted(uint256 indexed challengeId, address indexed participant, uint256 timestamp);
     event JudgeAdded(address indexed judge, string name);
@@ -125,7 +142,7 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
 
     /**
      * @dev Constructor sets the address of the WLD token contract used for staking/rewards.
-     * @param _wldToken Address of the WLD token (ERC20) contract.
+     * @param _wldToken Address of the WLD token (ERC20) contract
      */
     constructor(address _wldToken) {
         wldToken = IERC20(_wldToken);
@@ -133,17 +150,23 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Create a new challenge with parameters such as name, start/end date, min stake, and assigned judges.
+     * @dev Create a new challenge with parameters such as name, category, start/end date, min stake, and assigned judges.
+     *
+     * New parameters vs. previous version:
+     * - `_category`  (enum ChallengeCategory): A fixed set of categories (Common, Exercise, etc.)
+     * - `_subType`   (string): Arbitrary user-defined subtype or variation within that category.
      *
      * Requirements:
-     * - `_startDate` must be in the future.
-     * - `_endDate` must be after `_startDate`.
-     * - `_minStake` must be > 0.
-     * - Each address in `_judges` must already exist in the `judges` mapping and have JudgeStatus.Active.
+     * - `_startDate` > current block time
+     * - `_endDate` > `_startDate`
+     * - `_minStake` > 0
+     * - Each address in `_judges` must already exist and have status == JudgeStatus.Active
      */
     function createChallenge(
         string memory _name,
         string memory _description,
+        ChallengeCategory _category,
+        string memory _subType,
         uint256 _startDate,
         uint256 _endDate,
         uint256 _minStake,
@@ -158,6 +181,8 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         newChallenge.id = challengeId;
         newChallenge.name = _name;
         newChallenge.description = _description;
+        newChallenge.category = _category;
+        newChallenge.subType = _subType;
         newChallenge.startDate = _startDate;
         newChallenge.endDate = _endDate;
         newChallenge.minStake = _minStake;
@@ -169,17 +194,17 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
             newChallenge.judges.push(_judges[i]);
         }
 
-        emit ChallengeCreated(challengeId, _name, _startDate, _endDate);
+        emit ChallengeCreated(challengeId, _name, _startDate, _endDate, _category, _subType);
     }
 
     /**
      * @dev Join a challenge by staking WLD tokens.
      *
      * Requirements:
-     * - Challenge must be Active.
-     * - Current time must be before challenge.endDate.
-     * - `_stakeAmount` >= challenge.minStake.
-     * - Participant must not have already joined this challenge.
+     * - Challenge must be Active
+     * - Current block time < challenge.endDate
+     * - `_stakeAmount` >= challenge.minStake
+     * - Participant hasn't already joined
      */
     function joinChallenge(uint256 _challengeId, uint256 _stakeAmount) external nonReentrant {
         Challenge storage challenge = challenges[_challengeId];
@@ -201,12 +226,12 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Submit health data for a challenge. This can be called multiple times, e.g., daily or weekly data.
+     * @dev Submit health data for a challenge. (E.g., steps, water, or even a pointer to a video.)
      *
      * Requirements:
-     * - Challenge must be Active.
-     * - Current time must be within [challenge.startDate, challenge.endDate].
-     * - Caller must be a participant in the challenge (have staked tokens).
+     * - Challenge must be Active
+     * - Current block time between [challenge.startDate, challenge.endDate]
+     * - Caller must be a participant in the challenge
      */
     function submitHealthData(
         uint256 _challengeId,
@@ -268,15 +293,13 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Change the status of an existing judge (e.g., Active, Suspended, etc.)
+     * @dev Change the status of an existing judge (e.g., Active, Suspended, etc.).
      * @param _judge Address of the judge
      * @param _status New status for that judge
      */
     function changeJudgeStatus(address _judge, JudgeStatus _status) external onlyOwner {
         require(judges[_judge].addr != address(0), "Judge does not exist");
-
         judges[_judge].status = _status;
-
         emit JudgeStatusChanged(_judge, _status);
     }
 
@@ -287,10 +310,10 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
      * @param _approved Whether the participant completed the challenge successfully
      *
      * Requirements:
-     * - Caller must be one of the challenge's judges.
-     * - Judge must be active.
-     * - Challenge must be in Active or Judging status.
-     * - The participant must be in this challenge.
+     * - Caller must be one of the challenge's judges
+     * - Judge must be active
+     * - Challenge must be in Active or Judging status
+     * - The participant must be in this challenge
      */
     function verifyCompletion(uint256 _challengeId, address _participant, bool _approved) external {
         Challenge storage challenge = challenges[_challengeId];
@@ -329,13 +352,13 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Complete a challenge and mark it as no longer active. Rewards can then be claimed by participants.
+     * @dev Complete a challenge and mark it as no longer active. Rewards can then be claimed.
      * @param _challengeId ID of the challenge
      *
      * Requirements:
-     * - Only the owner can do this.
-     * - Challenge must be in Active or Judging status.
-     * - block.timestamp must be past challenge.endDate (i.e., the challenge ended).
+     * - Only the owner can do this
+     * - Challenge must be Active or Judging
+     * - block.timestamp > challenge.endDate
      */
     function completeChallenge(uint256 _challengeId) external onlyOwner {
         Challenge storage challenge = challenges[_challengeId];
@@ -353,8 +376,8 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
      * @param _challengeId ID of the challenge
      *
      * Requirements:
-     * - Challenge must be Completed.
-     * - Caller must be verified as having completed the challenge.
+     * - Challenge must be Completed
+     * - Caller must be verified as completed
      */
     function claimRewards(uint256 _challengeId) external nonReentrant {
         Challenge storage challenge = challenges[_challengeId];
@@ -388,17 +411,19 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev If the owner needs to cancel a challenge prematurely, this function refunds all staked tokens.
+     * @dev Cancel a challenge prematurely, refunding all stakes.
      * @param _challengeId ID of the challenge
      *
      * Requirements:
-     * - Challenge must not be already completed or cancelled.
+     * - Challenge must not be already completed or cancelled
      */
     function cancelChallenge(uint256 _challengeId) external onlyOwner {
         Challenge storage challenge = challenges[_challengeId];
 
-        require(challenge.status != ChallengeStatus.Completed && challenge.status != ChallengeStatus.Cancelled,
-                "Challenge already completed or cancelled");
+        require(
+            challenge.status != ChallengeStatus.Completed && challenge.status != ChallengeStatus.Cancelled,
+            "Challenge already completed or cancelled"
+        );
 
         challenge.status = ChallengeStatus.Cancelled;
 
@@ -419,7 +444,7 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     // ---------------------------------------------------
 
     /**
-     * @dev Returns a variety of challenge details by ID.
+     * @dev Returns a variety of challenge details by ID, including the new `category` and `subType`.
      */
     function getChallengeDetails(uint256 _challengeId)
         external
@@ -427,6 +452,8 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         returns (
             string memory name,
             string memory description,
+            ChallengeCategory category,
+            string memory subType,
             uint256 startDate,
             uint256 endDate,
             uint256 minStake,
@@ -440,6 +467,8 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         return (
             challenge.name,
             challenge.description,
+            challenge.category,
+            challenge.subType,
             challenge.startDate,
             challenge.endDate,
             challenge.minStake,
