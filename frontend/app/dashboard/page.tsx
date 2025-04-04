@@ -59,7 +59,7 @@ export default function Dashboard() {
                 </span>
               </div>
             </div>
-            <button 
+            <button
               onClick={handleLogout}
               className="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg text-white text-sm transition"
             >
@@ -72,31 +72,31 @@ export default function Dashboard() {
       {/* Stats Overview */}
       <div className="max-w-6xl mx-auto p-6 mt-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <DashboardCard 
+          <DashboardCard
             icon="emoji_events"
             iconColor="text-yellow-500"
-            title="Points" 
+            title="Points"
             value={userData.points.toString()}
             bgColor="bg-white"
           />
-          <DashboardCard 
+          <DashboardCard
             icon="military_tech"
             iconColor="text-purple-500"
-            title="Badges" 
+            title="Badges"
             value={userData.badges.toString()}
             bgColor="bg-white"
           />
-          <DashboardCard 
+          <DashboardCard
             icon="local_fire_department"
             iconColor="text-orange-500"
-            title="Streak Days" 
+            title="Streak Days"
             value={userData.streakDays.toString()}
             bgColor="bg-white"
           />
-          <DashboardCard 
+          <DashboardCard
             icon="task_alt"
             iconColor="text-blue-500"
-            title="Challenges Completed" 
+            title="Challenges Completed"
             value={userData.completedChallenges.toString()}
             bgColor="bg-white"
           />
@@ -107,28 +107,28 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto p-6">
         <h2 className="text-xl font-bold text-gray-800 mb-4">Today's Health</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <DashboardCard 
+          <DashboardCard
             icon="directions_walk"
             iconColor="text-green-500"
-            title="Steps" 
+            title="Steps"
             value={todaySteps.toString()}
             subtext="Goal: 10,000 steps"
             progress={todaySteps / 10000}
             bgColor="bg-white"
           />
-          <DashboardCard 
+          <DashboardCard
             icon="water_drop"
             iconColor="text-blue-500"
-            title="Water" 
+            title="Water"
             value={`${todayWater} cups`}
             subtext="Goal: 8 cups"
             progress={todayWater / 8}
             bgColor="bg-white"
           />
-          <DashboardCard 
+          <DashboardCard
             icon="bedtime"
             iconColor="text-indigo-500"
-            title="Sleep" 
+            title="Sleep"
             value={`${todaySleep} hrs`}
             subtext="Goal: 8 hours"
             progress={todaySleep / 8}
@@ -141,29 +141,29 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto p-6">
         <h2 className="text-xl font-bold text-gray-800 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Link 
-            href="/track" 
+          <Link
+            href="/track"
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-blue-500 text-3xl mb-2">monitoring</span>
             <p className="font-medium text-blue-500">Track Health</p>
           </Link>
-          <Link 
-            href="/challenges" 
+          <Link
+            href="/challenges"
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-purple-500 text-3xl mb-2">emoji_events</span>
             <p className="font-medium text-blue-500">Challenges</p>
           </Link>
-          <Link 
-            href="/rewards" 
+          <Link
+            href="/rewards"
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-yellow-500 text-3xl mb-2">redeem</span>
             <p className="font-medium text-blue-500">Rewards</p>
           </Link>
-          <Link 
-            href="/profile" 
+          <Link
+            href="/profile"
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-emerald-500 text-3xl mb-2">person</span>
@@ -189,4 +189,4 @@ export default function Dashboard() {
       </div>
     </div>
   );
-} 
+}

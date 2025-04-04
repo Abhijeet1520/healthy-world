@@ -10,14 +10,14 @@ export default function LoginPage() {
   const router = useRouter()
   const { isAuthenticated, isLoading, login, isConnecting, isVerifying } = useAuth()
   const [errorMessage, setErrorMessage] = useState('')
-  
+
   // If user is already authenticated, redirect to dashboard
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       router.push('/dashboard')
     }
   }, [isAuthenticated, isLoading, router])
-  
+
   const handleLogin = async () => {
     try {
       setErrorMessage('')
@@ -31,7 +31,7 @@ export default function LoginPage() {
       }
     }
   }
-  
+
   // Get the current login state text
   const getLoginButtonText = () => {
     if (isConnecting) return 'Connecting wallet...'
@@ -61,11 +61,11 @@ export default function LoginPage() {
             <div className="relative w-24 h-24">
               <div className="absolute inset-0 bg-white opacity-10 rounded-full animate-pulse"></div>
               <div className="relative z-10 flex items-center justify-center h-full">
-                <Image 
-                  src="/logo.svg" 
-                  alt="HealthyWorld Logo" 
-                  width={80} 
-                  height={80} 
+                <Image
+                  src="/logo.svg"
+                  alt="HealthyWorld Logo"
+                  width={80}
+                  height={80}
                   className="rounded-full"
                 />
               </div>
@@ -76,7 +76,7 @@ export default function LoginPage() {
             Track, Challenge, and Earn with World ID
           </p>
         </div>
-        
+
         {/* Login Form */}
         <div className="p-6">
           <div className="space-y-4">
@@ -88,17 +88,17 @@ export default function LoginPage() {
                 Privacy-First Verification
               </h2>
               <p className="text-blue-700 text-sm mt-1">
-                HealthyWorld uses World ID to verify your identity without compromising your privacy. 
+                HealthyWorld uses World ID to verify your identity without compromising your privacy.
                 No personal data is stored.
               </p>
             </div>
-            
+
             {errorMessage && (
               <div className="bg-red-50 text-red-700 p-4 rounded-lg text-sm">
                 {errorMessage}
               </div>
             )}
-            
+
             <button
               onClick={handleLogin}
               disabled={isLoading || isConnecting || isVerifying}
@@ -109,12 +109,12 @@ export default function LoginPage() {
               </svg>
               <span>{getLoginButtonText()}</span>
             </button>
-            
+
             <div className="text-center text-sm text-gray-500">
               <p>Don't have World ID yet?</p>
-              <a 
-                href="https://worldcoin.org/download" 
-                target="_blank" 
+              <a
+                href="https://worldcoin.org/download"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-emerald-600 hover:text-emerald-700 font-medium"
               >
@@ -122,7 +122,7 @@ export default function LoginPage() {
               </a>
             </div>
           </div>
-          
+
           <div className="mt-6 pt-6 border-t border-gray-100 text-center">
             <Link href="/" className="text-emerald-600 hover:text-emerald-700 text-sm font-medium">
               ← Back to Home
@@ -132,4 +132,4 @@ export default function LoginPage() {
       </div>
     </div>
   )
-} 
+}

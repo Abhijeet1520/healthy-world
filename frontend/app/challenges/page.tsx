@@ -23,7 +23,7 @@ interface Challenge {
 export default function ChallengesPage() {
   const [loading, setLoading] = useState(true)
   const [challenges, setChallenges] = useState<Challenge[]>([])
-  
+
   useEffect(() => {
     // Simulate API call to fetch challenges
     const timer = setTimeout(() => {
@@ -121,13 +121,13 @@ export default function ChallengesPage() {
       ])
       setLoading(false)
     }, 1000)
-    
+
     return () => clearTimeout(timer)
   }, [])
-  
+
   // Filter challenges by status
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'in-progress' | 'not-started'>('all')
-  
+
   const filteredChallenges = challenges.filter(challenge => {
     if (activeFilter === 'all') return true
     if (activeFilter === 'active' && (challenge.status === 'in-progress' || challenge.status === 'new')) return true
@@ -135,7 +135,7 @@ export default function ChallengesPage() {
     if (activeFilter === 'not-started' && challenge.status === 'not-started') return true
     return false
   })
-  
+
   return (
     <main className="min-h-screen p-4 md:p-6 bg-gradient-to-b from-emerald-50 to-teal-100">
       <div className="max-w-5xl mx-auto">
@@ -147,13 +147,13 @@ export default function ChallengesPage() {
             </Link>
             <h1 className="text-2xl font-bold text-emerald-800">Health Challenges</h1>
           </div>
-          
+
           <div className="bg-white shadow-sm rounded-lg p-1 flex">
             <button
               onClick={() => setActiveFilter('all')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeFilter === 'all' 
-                  ? 'bg-emerald-100 text-emerald-800' 
+                activeFilter === 'all'
+                  ? 'bg-emerald-100 text-emerald-800'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -162,8 +162,8 @@ export default function ChallengesPage() {
             <button
               onClick={() => setActiveFilter('active')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeFilter === 'active' 
-                  ? 'bg-emerald-100 text-emerald-800' 
+                activeFilter === 'active'
+                  ? 'bg-emerald-100 text-emerald-800'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -172,8 +172,8 @@ export default function ChallengesPage() {
             <button
               onClick={() => setActiveFilter('in-progress')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeFilter === 'in-progress' 
-                  ? 'bg-emerald-100 text-emerald-800' 
+                activeFilter === 'in-progress'
+                  ? 'bg-emerald-100 text-emerald-800'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -182,8 +182,8 @@ export default function ChallengesPage() {
             <button
               onClick={() => setActiveFilter('not-started')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeFilter === 'not-started' 
-                  ? 'bg-emerald-100 text-emerald-800' 
+                activeFilter === 'not-started'
+                  ? 'bg-emerald-100 text-emerald-800'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -191,7 +191,7 @@ export default function ChallengesPage() {
             </button>
           </div>
         </div>
-        
+
         <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-emerald-800 flex items-center">
@@ -200,7 +200,7 @@ export default function ChallengesPage() {
             </h2>
             <span className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full font-medium">Limited Time</span>
           </div>
-          
+
           <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg p-6 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 opacity-10">
               <span className="material-icons text-9xl">directions_run</span>
@@ -235,7 +235,7 @@ export default function ChallengesPage() {
             </div>
           </div>
         </div>
-        
+
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500 mb-4"></div>
@@ -244,7 +244,7 @@ export default function ChallengesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredChallenges.map((challenge) => (
-              <div 
+              <div
                 key={challenge.id}
                 className={`bg-gradient-to-br ${challenge.backgroundColor} border ${challenge.borderColor} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all`}
               >
@@ -271,20 +271,20 @@ export default function ChallengesPage() {
                       )}
                     </div>
                   </div>
-                  
+
                   <h3 className="font-bold text-gray-900 text-lg mb-2">{challenge.title}</h3>
                   <p className="text-sm text-gray-600 mb-4">{challenge.description}</p>
-                  
+
                   <div className="flex justify-between text-xs text-gray-500 mb-3">
                     <span>{challenge.category}</span>
                     <span>Difficulty: {challenge.difficulty}</span>
                   </div>
-                  
+
                   {challenge.status === 'in-progress' && (
                     <>
                       <div className="w-full bg-white bg-opacity-50 rounded-full h-2 mb-2">
-                        <div 
-                          className="bg-emerald-500 h-2 rounded-full" 
+                        <div
+                          className="bg-emerald-500 h-2 rounded-full"
                           style={{ width: `${challenge.progress}%` }}
                         ></div>
                       </div>
@@ -294,16 +294,16 @@ export default function ChallengesPage() {
                       </div>
                     </>
                   )}
-                  
+
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center space-x-1">
                       <span className="material-icons text-yellow-500 text-sm">star</span>
                       <span className="text-sm font-medium">{challenge.reward}</span>
                     </div>
-                    
-                    <button 
+
+                    <button
                       className={`py-1.5 px-4 rounded-lg text-sm font-medium ${
-                        challenge.status === 'in-progress' 
+                        challenge.status === 'in-progress'
                           ? 'bg-white text-emerald-700 border border-emerald-200'
                           : 'bg-emerald-600 text-white'
                       }`}
@@ -316,7 +316,7 @@ export default function ChallengesPage() {
             ))}
           </div>
         )}
-        
+
         {!loading && filteredChallenges.length === 0 && (
           <div className="bg-white rounded-xl shadow-sm p-8 text-center">
             <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -324,7 +324,7 @@ export default function ChallengesPage() {
             </div>
             <h3 className="text-lg font-bold text-gray-700 mb-2">No challenges found</h3>
             <p className="text-gray-500 mb-4">There are no challenges matching your selected filter.</p>
-            <button 
+            <button
               onClick={() => setActiveFilter('all')}
               className="py-2 px-4 bg-emerald-100 text-emerald-700 rounded-lg font-medium hover:bg-emerald-200 transition-colors"
             >
@@ -335,4 +335,4 @@ export default function ChallengesPage() {
       </div>
     </main>
   )
-} 
+}
