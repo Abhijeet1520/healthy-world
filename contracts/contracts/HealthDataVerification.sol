@@ -7,50 +7,56 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
  * @title HealthDataVerification
- * @notice Contract to verify health data from wearables and apps for the HealthyWorld platform
- * @dev Uses cryptographic signatures to verify data authenticity from trusted oracles
+ * @notice Contract to verify health data from wearables and apps for the HealthyWorld platform.
+ * @dev Uses cryptographic signatures to verify data authenticity from trusted oracles.
+ *      This can be used in combination with the challenges system to provide an extra layer of verification.
+ *
+ * Example Usage:
+ * - A user or a trusted oracle calls submitHealthData with details of some metric (e.g., steps).
+ * - A trusted oracle can then verify it with an ECDSA signature.
+ * - The data is stored on-chain with a status (Pending, Verified, Rejected).
  */
 contract HealthDataVerification is Ownable, ReentrancyGuard {
     using ECDSA for bytes32;
 
-    // Enum representing the status of data verification
-    enum VerificationStatus { 
+    // Status values for each submitted piece of data
+    enum VerificationStatus {
         Pending,
         Verified,
-        Rejected 
+        Rejected
     }
 
-    // Struct for a health data submission
+    // Struct representing a single health data submission
     struct HealthData {
-        address user;
-        bytes32 dataHash;
-        uint256 timestamp;
-        VerificationStatus status;
-        uint256 challengeId;
-        string dataType;  // e.g., "steps", "sleep", "workout"
-        uint256 value;    // Numerical value of the health metric
-        string metadata;  // Additional JSON metadata
+        address user;              // Address of the user who performed the activity
+        bytes32 dataHash;          // Keccak256 hash of the relevant data
+        uint256 timestamp;         // When it was submitted
+        VerificationStatus status; // Current verification status
+        uint256 challengeId;       // Challenge ID, if this data is for a specific challenge
+        string dataType;           // e.g., "steps", "sleep", "workout", "reps"
+        uint256 value;             // Numerical value of the metric
+        string metadata;           // Arbitrary JSON metadata
     }
 
-    // Mapping from data submission ID to health data
+    // Maps a submission ID to its HealthData record
     mapping(bytes32 => HealthData) public healthData;
-    
-    // Mapping of trusted data oracles
+
+    // Trusted oracles who can sign or verify data
     mapping(address => bool) public trustedOracles;
-    
-    // Mapping of user's verified submissions (user => dataType => submission IDs)
+
+    // Keep track of user submissions: user => dataType => array of submission IDs
     mapping(address => mapping(string => bytes32[])) public userSubmissions;
 
-    // Mapping for user health statistics (user => dataType => valueSum)
+    // Summaries for convenience: user => dataType => total sum of verified values
     mapping(address => mapping(string => uint256)) public userStatistics;
-    
-    // Mapping for user streaks (user => dataType => consecutive days)
+
+    // Example: track streaks for daily activities
     mapping(address => mapping(string => uint256)) public userStreaks;
-    
-    // Mapping for user's last activity timestamp (user => dataType => timestamp)
     mapping(address => mapping(string => uint256)) public userLastActivity;
 
-    // Events
+    // -----------------------
+    //         EVENTS
+    // -----------------------
     event OracleAdded(address indexed oracle);
     event OracleRemoved(address indexed oracle);
     event HealthDataSubmitted(bytes32 indexed submissionId, address indexed user, string dataType, uint256 value);
@@ -58,39 +64,40 @@ contract HealthDataVerification is Ownable, ReentrancyGuard {
     event HealthDataRejected(bytes32 indexed submissionId, address indexed user, string reason);
     event StreakUpdated(address indexed user, string dataType, uint256 streakCount);
 
+    /**
+     * @dev Constructor
+     */
     constructor() Ownable() {}
 
     /**
-     * @notice Add a trusted oracle that can verify health data
-     * @param oracle Address of the oracle to add
+     * @notice Add a trusted oracle who can verify health data.
+     * @param oracle Address of the oracle to add.
      */
     function addOracle(address oracle) external onlyOwner {
         require(oracle != address(0), "Invalid oracle address");
         require(!trustedOracles[oracle], "Oracle already trusted");
-        
         trustedOracles[oracle] = true;
         emit OracleAdded(oracle);
     }
 
     /**
-     * @notice Remove a trusted oracle
-     * @param oracle Address of the oracle to remove
+     * @notice Remove a trusted oracle.
+     * @param oracle Address of the oracle to remove.
      */
     function removeOracle(address oracle) external onlyOwner {
         require(trustedOracles[oracle], "Oracle not trusted");
-        
         trustedOracles[oracle] = false;
         emit OracleRemoved(oracle);
     }
 
     /**
-     * @notice Submit health data for verification
-     * @param user Address of the user the data belongs to
-     * @param dataType Type of health data (e.g., "steps")
-     * @param value Numerical value of the health metric
-     * @param challengeId ID of the challenge this data is for (0 if not for a specific challenge)
-     * @param metadata Additional information in JSON format
-     * @return submissionId The ID of the submission
+     * @notice Submit health data for verification.
+     * @param user The address of the user the data belongs to.
+     * @param dataType Type of health data, e.g. "steps", "workout", "reps".
+     * @param value Numerical value (e.g., step count, or rep count).
+     * @param challengeId ID of the relevant challenge, or 0 if none.
+     * @param metadata Arbitrary JSON data for additional details (e.g. device ID, angle analysis, etc.).
+     * @return submissionId A unique ID for this submission.
      */
     function submitHealthData(
         address user,
@@ -98,16 +105,21 @@ contract HealthDataVerification is Ownable, ReentrancyGuard {
         uint256 value,
         uint256 challengeId,
         string calldata metadata
-    ) external returns (bytes32 submissionId) {
-        require(msg.sender == user || trustedOracles[msg.sender], "Unauthorized");
-        
+    )
+        external
+        returns (bytes32 submissionId)
+    {
+        // Typically, you might allow only the user or a trusted oracle to create data.
+        // If you prefer a different rule, adjust as needed:
+        require(msg.sender == user || trustedOracles[msg.sender], "Unauthorized submitter");
+
         // Create a unique submission ID
         submissionId = keccak256(abi.encodePacked(user, dataType, value, block.timestamp, msg.sender));
-        
-        // Hash the data for verification
+
+        // Create a data hash for reference or future signature checks
         bytes32 dataHash = keccak256(abi.encodePacked(user, dataType, value, metadata));
-        
-        // Store the submission
+
+        // Store
         healthData[submissionId] = HealthData({
             user: user,
             dataHash: dataHash,
@@ -118,142 +130,149 @@ contract HealthDataVerification is Ownable, ReentrancyGuard {
             value: value,
             metadata: metadata
         });
-        
+
+        userSubmissions[user][dataType].push(submissionId);
+
         emit HealthDataSubmitted(submissionId, user, dataType, value);
         return submissionId;
     }
 
     /**
-     * @notice Verify health data with oracle signature
-     * @param submissionId ID of the data submission
-     * @param signature Cryptographic signature of the oracle
+     * @notice Verify previously submitted health data with a signature from a trusted oracle.
+     * @param submissionId The ID of the submission to verify.
+     * @param signature The ECDSA signature from a trusted oracle.
      */
     function verifyHealthData(bytes32 submissionId, bytes calldata signature) external {
-        require(trustedOracles[msg.sender], "Not a trusted oracle");
-        
+        require(trustedOracles[msg.sender], "Caller is not a trusted oracle");
+
         HealthData storage data = healthData[submissionId];
-        require(data.timestamp > 0, "Submission does not exist");
+        require(data.timestamp > 0, "Submission not found");
         require(data.status == VerificationStatus.Pending, "Already processed");
-        
-        // Verify the signature
-        bytes32 signHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", data.dataHash));
+
+        // Recreate the hash used for the signature
+        bytes32 signHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", data.dataHash)
+        );
+
+        // Recover the address that signed this data
         address signer = signHash.recover(signature);
         require(trustedOracles[signer], "Invalid signature");
-        
-        // Update status to verified
+
+        // Mark as verified
         data.status = VerificationStatus.Verified;
-        
-        // Add to user's submissions
-        userSubmissions[data.user][data.dataType].push(submissionId);
-        
+
         // Update user statistics
         userStatistics[data.user][data.dataType] += data.value;
-        
-        // Update streaks
+
+        // Update user streak if this data counts as a daily activity
         updateStreak(data.user, data.dataType);
-        
+
         emit HealthDataVerified(submissionId, data.user, data.dataType, data.value);
     }
 
     /**
-     * @notice Reject invalid health data
-     * @param submissionId ID of the data submission
-     * @param reason Reason for rejection
+     * @notice Reject an invalid or fraudulent submission.
+     * @param submissionId The ID of the submission to reject.
+     * @param reason Reason for rejecting, e.g., "Data not consistent".
      */
     function rejectHealthData(bytes32 submissionId, string calldata reason) external {
-        require(trustedOracles[msg.sender] || msg.sender == owner(), "Not authorized");
-        
+        // Both trusted oracles and the contract owner can reject data
+        require(trustedOracles[msg.sender] || msg.sender == owner(), "Not authorized to reject");
+
         HealthData storage data = healthData[submissionId];
         require(data.timestamp > 0, "Submission does not exist");
         require(data.status == VerificationStatus.Pending, "Already processed");
-        
-        // Update status to rejected
+
         data.status = VerificationStatus.Rejected;
-        
         emit HealthDataRejected(submissionId, data.user, reason);
     }
 
     /**
-     * @notice Update user streak for consistent activity
-     * @param user User address
-     * @param dataType Type of health data
+     * @notice Internal function to track daily streaks for any data type.
+     * @param user The user address.
+     * @param dataType The type of data (e.g., "steps").
      */
     function updateStreak(address user, string memory dataType) internal {
         uint256 lastActivity = userLastActivity[user][dataType];
-        uint256 currentDay = block.timestamp / 86400; // Convert to days
+        uint256 currentDay = block.timestamp / 86400; // # of days since epoch
         uint256 lastDay = lastActivity / 86400;
-        
+
         if (lastActivity == 0) {
-            // First activity
+            // First time submission
             userStreaks[user][dataType] = 1;
         } else if (currentDay == lastDay) {
-            // Already counted today
+            // Already counted today, do nothing
             return;
         } else if (currentDay == lastDay + 1) {
-            // Consecutive day
+            // Next consecutive day
             userStreaks[user][dataType]++;
         } else {
-            // Streak broken
+            // Gap in days => streak resets
             userStreaks[user][dataType] = 1;
         }
-        
+
         userLastActivity[user][dataType] = block.timestamp;
         emit StreakUpdated(user, dataType, userStreaks[user][dataType]);
     }
 
+    // -----------------------
+    //       VIEW FUNCTIONS
+    // -----------------------
+
     /**
-     * @notice Get a user's submission count for a specific data type
-     * @param user User address
-     * @param dataType Type of health data
-     * @return count Number of verified submissions
+     * @notice Returns how many verified submissions a user has for a particular data type.
      */
-    function getUserSubmissionCount(address user, string calldata dataType) external view returns (uint256) {
+    function getUserSubmissionCount(address user, string calldata dataType)
+        external
+        view
+        returns (uint256)
+    {
         return userSubmissions[user][dataType].length;
     }
 
     /**
-     * @notice Get user's current streak for a specific data type
-     * @param user User address
-     * @param dataType Type of health data
-     * @return streak Current streak count
+     * @notice Returns the user's current streak for a given data type.
      */
-    function getUserStreak(address user, string calldata dataType) external view returns (uint256) {
+    function getUserStreak(address user, string calldata dataType)
+        external
+        view
+        returns (uint256)
+    {
         return userStreaks[user][dataType];
     }
 
     /**
-     * @notice Get user's total value for a specific data type
-     * @param user User address
-     * @param dataType Type of health data
-     * @return value Total accumulated value
+     * @notice Returns the user's total verified value for a data type (e.g., total steps).
      */
-    function getUserStatistic(address user, string calldata dataType) external view returns (uint256) {
+    function getUserStatistic(address user, string calldata dataType)
+        external
+        view
+        returns (uint256)
+    {
         return userStatistics[user][dataType];
     }
 
     /**
-     * @notice Get details of a health data submission
-     * @param submissionId ID of the submission
-     * @return user User address
-     * @return dataType Type of health data
-     * @return value Numerical value
-     * @return timestamp Submission timestamp
-     * @return status Verification status
+     * @notice Returns a subset of the HealthData struct for an existing submission.
      */
-    function getHealthDataDetails(bytes32 submissionId) external view returns (
-        address user,
-        string memory dataType,
-        uint256 value,
-        uint256 timestamp,
-        VerificationStatus status
-    ) {
-        HealthData storage data = healthData[submissionId];
+    function getHealthDataDetails(bytes32 submissionId)
+        external
+        view
+        returns (
+            address user,
+            string memory dataType,
+            uint256 value,
+            uint256 timestamp,
+            VerificationStatus status
+        )
+    {
+        HealthData storage d = healthData[submissionId];
         return (
-            data.user,
-            data.dataType,
-            data.value,
-            data.timestamp,
-            data.status
+            d.user,
+            d.dataType,
+            d.value,
+            d.timestamp,
+            d.status
         );
     }
-} 
+}

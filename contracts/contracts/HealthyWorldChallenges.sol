@@ -7,73 +7,113 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title HealthyWorldChallenges
- * @dev Contract for managing fitness challenges, staking, and rewards
+ * @dev This contract manages a system of health/fitness challenges. Users can stake tokens to participate,
+ *      judges can verify completion, and participants can claim rewards if they successfully complete.
+ *
+ * Features:
+ * - Create challenges with a start date, end date, min stake.
+ * - Users join by staking WLD tokens.
+ * - Health data can be submitted (e.g., steps, water intake, or any metric).
+ * - Judges verify completion.
+ * - Rewards are distributed to successful participants after the challenge ends.
  */
 contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
-    // Token used for staking and rewards
+    // Reference to the WLD token (ERC20) used for staking and rewards
     IERC20 public wldToken;
-    
-    // Challenge status enum
+
+    /**
+     * @dev ChallengeStatus:
+     *  Active    - Challenge is ongoing, participants can join, submit data, etc.
+     *  Judging   - Challenge can be moved to this state if needed for special logic (optional).
+     *  Completed - Challenge is finished, participants can claim rewards.
+     *  Cancelled - Challenge was cancelled, and stakes are refunded.
+     */
     enum ChallengeStatus { Active, Judging, Completed, Cancelled }
-    
-    // Judge status enum
+
+    /**
+     * @dev JudgeStatus:
+     *  Inactive  - Judge is in the system but not active for new challenges.
+     *  Active    - Judge is active and can verify completions.
+     *  Suspended - Judge is temporarily suspended from verifying.
+     */
     enum JudgeStatus { Inactive, Active, Suspended }
-    
-    // Challenge struct
+
+    /**
+     * @dev Data structure representing a challenge in the system.
+     *
+     * The poolSize is a sum of all staked tokens by participants.
+     * The participantStakes and participantCompletions mappings track how much each participant staked,
+     * and whether they have officially been verified as completed by enough judges.
+     */
     struct Challenge {
-        uint256 id;
-        string name;
-        string description;
-        uint256 startDate;
-        uint256 endDate;
-        uint256 minStake;
-        uint256 poolSize;
-        address[] participants;
-        mapping(address => uint256) participantStakes;
-        mapping(address => bool) participantCompletions;
-        address[] judges;
-        ChallengeStatus status;
-        uint256 completedParticipants;
+        uint256 id;                  // Unique challenge ID
+        string name;                 // Short name/title of the challenge
+        string description;          // Description/purpose of the challenge
+        uint256 startDate;           // Unix timestamp when challenge starts
+        uint256 endDate;             // Unix timestamp when challenge ends
+        uint256 minStake;            // Minimum required stake in WLD tokens
+        uint256 poolSize;            // Total amount of WLD tokens staked by participants
+        address[] participants;      // Array of all participants
+        mapping(address => uint256) participantStakes;      // Tracks how much each participant staked
+        mapping(address => bool) participantCompletions;    // True if participant is verified as completed
+        address[] judges;            // Addresses of judges assigned to this challenge
+        ChallengeStatus status;      // Current status of the challenge
+        uint256 completedParticipants;  // Number of participants verified as completed
     }
-    
-    // Judge struct
+
+    /**
+     * @dev Data structure representing a judge in the system.
+     */
     struct Judge {
-        address addr;
-        string name;
-        uint256 reputation;
-        JudgeStatus status;
+        address addr;            // Address of the judge
+        string name;             // Name or nickname of the judge
+        uint256 reputation;      // Arbitrary reputation score
+        JudgeStatus status;      // Current status of the judge (Active, Inactive, Suspended)
     }
-    
-    // Participant health data struct
+
+    /**
+     * @dev Data structure for a participant's health data submission.
+     *
+     * Example: steps, water intake, or even a video reference if you want to store a pointer to off-chain data.
+     */
     struct HealthData {
-        uint256 challengeId;
-        address participant;
-        uint256 timestamp;
-        uint256 steps;
-        uint256 waterCups;
-        uint256 sleepHours;
-        uint256 mindfulMinutes;
-        string dataSourceType; // e.g., "AppleWatch", "Fitbit", "manual"
-        string dataSourceId;   // Device ID or identifier
-        bytes proofData;       // Could be a hash or signature from the device
+        uint256 challengeId;      // Which challenge this data is for
+        address participant;      // Who submitted the data
+        uint256 timestamp;        // When it was submitted
+        uint256 steps;            // Example: step count
+        uint256 waterCups;        // Example: water intake in cups
+        uint256 sleepHours;       // Example: hours of sleep
+        uint256 mindfulMinutes;   // Example: minutes of mindfulness
+        string dataSourceType;    // e.g., "AppleWatch", "Fitbit", "manual", "video"
+        string dataSourceId;      // Device identifier, or IPFS hash for a video, etc.
+        bytes proofData;          // Arbitrary proof/signed data for verification
     }
-    
-    // Array of challenges
+
+    // Maps a challenge ID to the Challenge struct
     uint256 public challengeCount;
     mapping(uint256 => Challenge) public challenges;
-    
-    // Array of judges
+
+    // Maps a judge's address to the Judge struct
     mapping(address => Judge) public judges;
     address[] public judgeAddresses;
-    
-    // Health data submissions
+
+    // Health data submissions: challengeId => participant => array of submissions
     mapping(uint256 => mapping(address => HealthData[])) public healthDataSubmissions;
-    
-    // Challenge verification results
-    mapping(uint256 => mapping(address => mapping(address => bool))) public verifications; // challengeId => participant => judge => approved
-    mapping(uint256 => mapping(address => uint256)) public approvalCount; // challengeId => participant => count of approvals
-    
-    // Events
+
+    /**
+     * @dev verifications[chId][participant][judge] = whether that judge approved the participant's completion
+     */
+    mapping(uint256 => mapping(address => mapping(address => bool))) public verifications;
+
+    /**
+     * @dev approvalCount[chId][participant] = how many judges approved the participant
+     */
+    mapping(uint256 => mapping(address => uint256)) public approvalCount;
+
+    // -----------------------
+    //         EVENTS
+    // -----------------------
+
     event ChallengeCreated(uint256 indexed challengeId, string name, uint256 startDate, uint256 endDate);
     event ChallengeJoined(uint256 indexed challengeId, address indexed participant, uint256 stakeAmount);
     event HealthDataSubmitted(uint256 indexed challengeId, address indexed participant, uint256 timestamp);
@@ -82,24 +122,24 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
     event ChallengeVerified(uint256 indexed challengeId, address indexed participant, address indexed judge, bool approved);
     event ChallengeCompleted(uint256 indexed challengeId, uint256 totalRewards);
     event RewardsClaimed(uint256 indexed challengeId, address indexed participant, uint256 amount);
-    
+
     /**
-     * @dev Constructor to set the WLD token address
-     * @param _wldToken Address of the WLD token contract
+     * @dev Constructor sets the address of the WLD token contract used for staking/rewards.
+     * @param _wldToken Address of the WLD token (ERC20) contract.
      */
     constructor(address _wldToken) {
         wldToken = IERC20(_wldToken);
         challengeCount = 0;
     }
-    
+
     /**
-     * @dev Create a new challenge
-     * @param _name Challenge name
-     * @param _description Challenge description
-     * @param _startDate Challenge start date (Unix timestamp)
-     * @param _endDate Challenge end date (Unix timestamp)
-     * @param _minStake Minimum stake amount in WLD tokens
-     * @param _judges Array of judge addresses for this challenge
+     * @dev Create a new challenge with parameters such as name, start/end date, min stake, and assigned judges.
+     *
+     * Requirements:
+     * - `_startDate` must be in the future.
+     * - `_endDate` must be after `_startDate`.
+     * - `_minStake` must be > 0.
+     * - Each address in `_judges` must already exist in the `judges` mapping and have JudgeStatus.Active.
      */
     function createChallenge(
         string memory _name,
@@ -112,7 +152,7 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         require(_startDate > block.timestamp, "Start date must be in the future");
         require(_endDate > _startDate, "End date must be after start date");
         require(_minStake > 0, "Minimum stake must be greater than 0");
-        
+
         uint256 challengeId = challengeCount++;
         Challenge storage newChallenge = challenges[challengeId];
         newChallenge.id = challengeId;
@@ -122,50 +162,51 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         newChallenge.endDate = _endDate;
         newChallenge.minStake = _minStake;
         newChallenge.status = ChallengeStatus.Active;
-        
+
         // Add judges
         for (uint256 i = 0; i < _judges.length; i++) {
             require(judges[_judges[i]].status == JudgeStatus.Active, "Invalid judge");
             newChallenge.judges.push(_judges[i]);
         }
-        
+
         emit ChallengeCreated(challengeId, _name, _startDate, _endDate);
     }
-    
+
     /**
-     * @dev Join a challenge by staking WLD tokens
-     * @param _challengeId ID of the challenge to join
-     * @param _stakeAmount Amount of WLD tokens to stake
+     * @dev Join a challenge by staking WLD tokens.
+     *
+     * Requirements:
+     * - Challenge must be Active.
+     * - Current time must be before challenge.endDate.
+     * - `_stakeAmount` >= challenge.minStake.
+     * - Participant must not have already joined this challenge.
      */
     function joinChallenge(uint256 _challengeId, uint256 _stakeAmount) external nonReentrant {
         Challenge storage challenge = challenges[_challengeId];
-        
+
         require(challenge.status == ChallengeStatus.Active, "Challenge is not active");
         require(block.timestamp < challenge.endDate, "Challenge has ended");
         require(_stakeAmount >= challenge.minStake, "Stake amount too low");
         require(challenge.participantStakes[msg.sender] == 0, "Already joined");
-        
-        // Transfer tokens from participant to contract
+
+        // Transfer the staking tokens from the participant to this contract
         require(wldToken.transferFrom(msg.sender, address(this), _stakeAmount), "Token transfer failed");
-        
-        // Add participant to challenge
+
+        // Record the participant
         challenge.participants.push(msg.sender);
         challenge.participantStakes[msg.sender] = _stakeAmount;
         challenge.poolSize += _stakeAmount;
-        
+
         emit ChallengeJoined(_challengeId, msg.sender, _stakeAmount);
     }
-    
+
     /**
-     * @dev Submit health data for a challenge
-     * @param _challengeId ID of the challenge
-     * @param _steps Step count
-     * @param _waterCups Water intake in cups
-     * @param _sleepHours Sleep duration in hours (can be fractional)
-     * @param _mindfulMinutes Mindfulness minutes
-     * @param _dataSourceType Type of data source (e.g., "AppleWatch", "Fitbit")
-     * @param _dataSourceId Device ID or identifier
-     * @param _proofData Proof data or signature from the device
+     * @dev Submit health data for a challenge. This can be called multiple times, e.g., daily or weekly data.
+     *
+     * Requirements:
+     * - Challenge must be Active.
+     * - Current time must be within [challenge.startDate, challenge.endDate].
+     * - Caller must be a participant in the challenge (have staked tokens).
      */
     function submitHealthData(
         uint256 _challengeId,
@@ -178,13 +219,13 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         bytes memory _proofData
     ) external {
         Challenge storage challenge = challenges[_challengeId];
-        
+
         require(challenge.status == ChallengeStatus.Active, "Challenge is not active");
         require(block.timestamp >= challenge.startDate, "Challenge has not started");
         require(block.timestamp <= challenge.endDate, "Challenge has ended");
         require(challenge.participantStakes[msg.sender] > 0, "Not a participant");
-        
-        // Create health data record
+
+        // Build the HealthData record
         HealthData memory data = HealthData({
             challengeId: _challengeId,
             participant: msg.sender,
@@ -197,58 +238,64 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
             dataSourceId: _dataSourceId,
             proofData: _proofData
         });
-        
-        // Store the data
+
+        // Store the data submission
         healthDataSubmissions[_challengeId][msg.sender].push(data);
-        
+
         emit HealthDataSubmitted(_challengeId, msg.sender, block.timestamp);
     }
-    
+
     /**
-     * @dev Add a new judge
+     * @dev Add a new judge to the system. The judge can be assigned to future challenges.
      * @param _judge Address of the judge
-     * @param _name Name of the judge
+     * @param _name Human-readable judge name
      */
     function addJudge(address _judge, string memory _name) external onlyOwner {
         require(_judge != address(0), "Invalid address");
         require(judges[_judge].addr == address(0), "Judge already exists");
-        
+
         Judge memory newJudge = Judge({
             addr: _judge,
             name: _name,
-            reputation: 100, // Default reputation
+            reputation: 100, // Default starting reputation
             status: JudgeStatus.Active
         });
-        
+
         judges[_judge] = newJudge;
         judgeAddresses.push(_judge);
-        
+
         emit JudgeAdded(_judge, _name);
     }
-    
+
     /**
-     * @dev Change judge status
+     * @dev Change the status of an existing judge (e.g., Active, Suspended, etc.)
      * @param _judge Address of the judge
-     * @param _status New status
+     * @param _status New status for that judge
      */
     function changeJudgeStatus(address _judge, JudgeStatus _status) external onlyOwner {
         require(judges[_judge].addr != address(0), "Judge does not exist");
-        
+
         judges[_judge].status = _status;
-        
+
         emit JudgeStatusChanged(_judge, _status);
     }
-    
+
     /**
-     * @dev Verify a participant's completion of a challenge
+     * @dev Verify a participant's completion of a challenge. Judges call this after reviewing data.
      * @param _challengeId ID of the challenge
      * @param _participant Address of the participant
-     * @param _approved Whether the participant completed the challenge
+     * @param _approved Whether the participant completed the challenge successfully
+     *
+     * Requirements:
+     * - Caller must be one of the challenge's judges.
+     * - Judge must be active.
+     * - Challenge must be in Active or Judging status.
+     * - The participant must be in this challenge.
      */
     function verifyCompletion(uint256 _challengeId, address _participant, bool _approved) external {
         Challenge storage challenge = challenges[_challengeId];
-        
-        // Ensure sender is a judge for this challenge
+
+        // Check if caller is a judge for this challenge
         bool isJudge = false;
         for (uint256 i = 0; i < challenge.judges.length; i++) {
             if (challenge.judges[i] == msg.sender) {
@@ -258,103 +305,138 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
         }
         require(isJudge, "Not a judge for this challenge");
         require(judges[msg.sender].status == JudgeStatus.Active, "Judge is not active");
-        
-        // Ensure challenge status
+
+        // Challenge must be active or in judging state
         require(challenge.status == ChallengeStatus.Active || challenge.status == ChallengeStatus.Judging, "Challenge not in judging phase");
-        
-        // Ensure participant is in the challenge
+
+        // Ensure participant is valid
         require(challenge.participantStakes[_participant] > 0, "Not a participant");
-        
-        // Record verification
+
+        // Record the judge's verification
         verifications[_challengeId][_participant][msg.sender] = _approved;
-        
+
         if (_approved) {
             approvalCount[_challengeId][_participant]++;
-            
-            // Check if this participant has enough approvals to be considered completed
-            // Requirement: More than 50% of judges approve
+
+            // If more than half of the judges have approved, mark as completed
             if (approvalCount[_challengeId][_participant] > challenge.judges.length / 2) {
                 challenge.participantCompletions[_participant] = true;
                 challenge.completedParticipants++;
             }
         }
-        
+
         emit ChallengeVerified(_challengeId, _participant, msg.sender, _approved);
     }
-    
+
     /**
-     * @dev Complete a challenge and distribute rewards
-     * @param _challengeId ID of the challenge to complete
+     * @dev Complete a challenge and mark it as no longer active. Rewards can then be claimed by participants.
+     * @param _challengeId ID of the challenge
+     *
+     * Requirements:
+     * - Only the owner can do this.
+     * - Challenge must be in Active or Judging status.
+     * - block.timestamp must be past challenge.endDate (i.e., the challenge ended).
      */
     function completeChallenge(uint256 _challengeId) external onlyOwner {
         Challenge storage challenge = challenges[_challengeId];
-        
+
         require(challenge.status == ChallengeStatus.Active || challenge.status == ChallengeStatus.Judging, "Challenge cannot be completed");
         require(block.timestamp > challenge.endDate, "Challenge has not ended");
-        
-        // Set challenge as completed
+
         challenge.status = ChallengeStatus.Completed;
-        
+
         emit ChallengeCompleted(_challengeId, challenge.poolSize);
     }
-    
+
     /**
-     * @dev Claim rewards for completing a challenge
+     * @dev Participants who have completed a challenge (verified) can claim their share of the pool.
      * @param _challengeId ID of the challenge
+     *
+     * Requirements:
+     * - Challenge must be Completed.
+     * - Caller must be verified as having completed the challenge.
      */
     function claimRewards(uint256 _challengeId) external nonReentrant {
         Challenge storage challenge = challenges[_challengeId];
-        
+
         require(challenge.status == ChallengeStatus.Completed, "Challenge not completed");
         require(challenge.participantCompletions[msg.sender], "Did not complete challenge");
         require(challenge.participantStakes[msg.sender] > 0, "No stake found");
-        
-        // Calculate reward amount
-        // Formula: Your stake + (proportional share of non-completing participants' stakes)
+
+        // Basic logic: the participant’s reward is their original stake plus
+        // a share of the unclaimed pool from participants who did not complete.
+
         uint256 stake = challenge.participantStakes[msg.sender];
         uint256 reward = stake;
-        
+
+        // If not all participants completed, distribute the unclaimed portion among the successful participants
         if (challenge.completedParticipants < challenge.participants.length) {
             uint256 unclaimedPool = challenge.poolSize;
+            // Subtract the stake for each successful participant from the total
             unclaimedPool -= challenge.completedParticipants * stake;
+            // Divide the leftover among the completed participants
             reward += (unclaimedPool / challenge.completedParticipants);
         }
-        
-        // Reset stake to prevent double claims
+
+        // Zero out their stake so they can’t claim again
         challenge.participantStakes[msg.sender] = 0;
-        
-        // Transfer reward to participant
+
+        // Transfer the tokens to the participant
         require(wldToken.transfer(msg.sender, reward), "Token transfer failed");
-        
+
         emit RewardsClaimed(_challengeId, msg.sender, reward);
     }
-    
+
     /**
-     * @dev Get challenge details
+     * @dev If the owner needs to cancel a challenge prematurely, this function refunds all staked tokens.
      * @param _challengeId ID of the challenge
-     * @return name Challenge name
-     * @return description Challenge description
-     * @return startDate Challenge start date
-     * @return endDate Challenge end date
-     * @return minStake Minimum stake amount
-     * @return poolSize Challenge pool size
-     * @return status Challenge status
-     * @return participantCount Number of participants
-     * @return completedCount Number of completed participants
+     *
+     * Requirements:
+     * - Challenge must not be already completed or cancelled.
      */
-    function getChallengeDetails(uint256 _challengeId) external view returns (
-        string memory name,
-        string memory description,
-        uint256 startDate,
-        uint256 endDate,
-        uint256 minStake,
-        uint256 poolSize,
-        ChallengeStatus status,
-        uint256 participantCount,
-        uint256 completedCount
-    ) {
+    function cancelChallenge(uint256 _challengeId) external onlyOwner {
         Challenge storage challenge = challenges[_challengeId];
-        
+
+        require(challenge.status != ChallengeStatus.Completed && challenge.status != ChallengeStatus.Cancelled,
+                "Challenge already completed or cancelled");
+
+        challenge.status = ChallengeStatus.Cancelled;
+
+        // Return stakes to all participants
+        for (uint256 i = 0; i < challenge.participants.length; i++) {
+            address participant = challenge.participants[i];
+            uint256 stake = challenge.participantStakes[participant];
+
+            if (stake > 0) {
+                challenge.participantStakes[participant] = 0;
+                wldToken.transfer(participant, stake);
+            }
+        }
+    }
+
+    // ---------------------------------------------------
+    //                GETTER FUNCTIONS
+    // ---------------------------------------------------
+
+    /**
+     * @dev Returns a variety of challenge details by ID.
+     */
+    function getChallengeDetails(uint256 _challengeId)
+        external
+        view
+        returns (
+            string memory name,
+            string memory description,
+            uint256 startDate,
+            uint256 endDate,
+            uint256 minStake,
+            uint256 poolSize,
+            ChallengeStatus status,
+            uint256 participantCount,
+            uint256 completedCount
+        )
+    {
+        Challenge storage challenge = challenges[_challengeId];
         return (
             challenge.name,
             challenge.description,
@@ -367,57 +449,48 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
             challenge.completedParticipants
         );
     }
-    
+
     /**
-     * @dev Get challenge participants
-     * @param _challengeId ID of the challenge
-     * @return participants Array of participant addresses
+     * @dev Returns the array of participant addresses for a challenge.
      */
     function getChallengeParticipants(uint256 _challengeId) external view returns (address[] memory) {
         return challenges[_challengeId].participants;
     }
-    
+
     /**
-     * @dev Get challenge judges
-     * @param _challengeId ID of the challenge
-     * @return judges Array of judge addresses
+     * @dev Returns the array of judge addresses for a challenge.
      */
     function getChallengeJudges(uint256 _challengeId) external view returns (address[] memory) {
         return challenges[_challengeId].judges;
     }
-    
+
     /**
-     * @dev Get participant health data for a challenge
-     * @param _challengeId ID of the challenge
-     * @param _participant Address of the participant
-     * @return count Number of health data submissions
+     * @dev Returns the number of health data submissions for a participant in a challenge.
      */
     function getHealthDataCount(uint256 _challengeId, address _participant) external view returns (uint256) {
         return healthDataSubmissions[_challengeId][_participant].length;
     }
-    
+
     /**
-     * @dev Get specific health data entry
-     * @param _challengeId ID of the challenge
-     * @param _participant Address of the participant
-     * @param _index Index of the health data entry
-     * @return timestamp Timestamp of data submission
-     * @return steps Step count
-     * @return waterCups Water intake in cups
-     * @return sleepHours Sleep hours
-     * @return mindfulMinutes Mindfulness minutes
-     * @return dataSourceType Type of data source
+     * @dev Returns a specific HealthData entry for a participant in a challenge.
      */
-    function getHealthData(uint256 _challengeId, address _participant, uint256 _index) external view returns (
-        uint256 timestamp,
-        uint256 steps,
-        uint256 waterCups,
-        uint256 sleepHours,
-        uint256 mindfulMinutes,
-        string memory dataSourceType
-    ) {
+    function getHealthData(
+        uint256 _challengeId,
+        address _participant,
+        uint256 _index
+    )
+        external
+        view
+        returns (
+            uint256 timestamp,
+            uint256 steps,
+            uint256 waterCups,
+            uint256 sleepHours,
+            uint256 mindfulMinutes,
+            string memory dataSourceType
+        )
+    {
         HealthData memory data = healthDataSubmissions[_challengeId][_participant][_index];
-        
         return (
             data.timestamp,
             data.steps,
@@ -427,27 +500,4 @@ contract HealthyWorldChallenges is Ownable, ReentrancyGuard {
             data.dataSourceType
         );
     }
-    
-    /**
-     * @dev Emergency function to cancel a challenge and return all stakes
-     * @param _challengeId ID of the challenge to cancel
-     */
-    function cancelChallenge(uint256 _challengeId) external onlyOwner {
-        Challenge storage challenge = challenges[_challengeId];
-        
-        require(challenge.status != ChallengeStatus.Completed && challenge.status != ChallengeStatus.Cancelled, "Challenge already completed or cancelled");
-        
-        challenge.status = ChallengeStatus.Cancelled;
-        
-        // Return stakes to all participants
-        for (uint256 i = 0; i < challenge.participants.length; i++) {
-            address participant = challenge.participants[i];
-            uint256 stake = challenge.participantStakes[participant];
-            
-            if (stake > 0) {
-                challenge.participantStakes[participant] = 0;
-                wldToken.transfer(participant, stake);
-            }
-        }
-    }
-} 
+}
