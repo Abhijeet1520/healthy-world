@@ -6,7 +6,7 @@ import { useChallenges } from '@/components/contracts/ChallengeProvider'
 import LiveDetection from '@/components/LiveDetection'
 import Image from 'next/image'
 
-// Enums for challenge status, categories and judge status
+// Enums for challenge status and categories
 enum ChallengeStatus { Active, Judging, Completed, Cancelled }
 enum ChallengeCategory { Common, Exercise, Nutrition }
 
@@ -29,17 +29,29 @@ interface Challenge {
   myCompletion: boolean;
 }
 
+// Mapping for icons based on category
+const categoryIconMapping: Record<ChallengeCategory, string> = {
+  [ChallengeCategory.Common]: 'emoji_events',
+  [ChallengeCategory.Exercise]: 'fitness_center',
+  [ChallengeCategory.Nutrition]: 'local_dining',
+}
 
-// Map subType values to Material Icons (or any default)
-const iconMapping: Record<string, string> = {
-  steps: 'directions_walk',
-  water: 'water_drop',
-  mindfulness: 'self_improvement',
-  strength: 'fitness_center',
+// Mapping for background gradients based on category
+const categoryBgMapping: Record<ChallengeCategory, string> = {
+  [ChallengeCategory.Common]: 'from-gray-50 to-gray-100',
+  [ChallengeCategory.Exercise]: 'from-indigo-50 to-indigo-100',
+  [ChallengeCategory.Nutrition]: 'from-red-50 to-red-100',
+}
+
+// Mapping for border colors based on category
+const categoryBorderMapping: Record<ChallengeCategory, string> = {
+  [ChallengeCategory.Common]: 'border-gray-200',
+  [ChallengeCategory.Exercise]: 'border-indigo-200',
+  [ChallengeCategory.Nutrition]: 'border-red-200',
 }
 
 export default function ChallengesPage() {
-  // const { challenges, loadingChallenges } = useChallenges()
+  // Using mock data for demonstration (replace with context if needed)
   const [loading, setLoading] = useState(true)
   const [challenges, setChallenges] = useState<Challenge[]>([])
 
@@ -130,13 +142,13 @@ export default function ChallengesPage() {
   // Filter challenges based on the selected filter
   const filteredChallenges = challenges.filter(challenge => {
     if (activeFilter === 'all') return true
-    if (activeFilter === 'active' && (challenge.status === 'in-progress' || challenge.status === 'new')) return true
-    if (activeFilter === 'in-progress' && challenge.status === 'in-progress') return true
-    if (activeFilter === 'not-started' && challenge.status === 'not-started') return true
+    if (activeFilter === 'active' && (challenge.status === ChallengeStatus.Active || challenge.status === ChallengeStatus.Judging)) return true
+    if (activeFilter === 'in-progress' && challenge.status === ChallengeStatus.Active) return challenge.isJoined
+    if (activeFilter === 'not-started' && challenge.status === ChallengeStatus.Active) return !challenge.isJoined
     return false
   })
 
-  // Dummy function to calculate progress percentage
+  // Dummy function to calculate progress percentage based on time
   const calculateProgress = (startDate: Date, endDate: Date) => {
     const now = new Date().getTime()
     const start = startDate.getTime()
@@ -233,16 +245,18 @@ export default function ChallengesPage() {
         ) : (
           <div className="space-y-4">
             {filteredChallenges.map(challenge => {
-              // Use icon mapping (fallback to 'emoji_events')
-              const icon = iconMapping[challenge.icon] || 'emoji_events'
+              // Get icon, background and border based on challenge category
+              const icon = categoryIconMapping[challenge.category] || 'emoji_events'
+              const bgClass = categoryBgMapping[challenge.category] || 'from-gray-50 to-gray-100'
+              const borderClass = categoryBorderMapping[challenge.category] || 'border-gray-200'
               return (
                 <div key={challenge.id}>
                   <div
                     onClick={() => toggleChallengeDetails(challenge.id)}
-                    className={`bg-gradient-to-br ${challenge.backgroundColor} border ${challenge.borderColor} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer p-5 flex justify-between items-center`}
+                    className={`bg-gradient-to-br ${bgClass} ${borderClass} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer p-5 flex justify-between items-center`}
                   >
                     <div className="flex items-center space-x-4">
-                      <div className={`w-12 h-12 rounded-lg bg-white flex items-center justify-center ${challenge.iconColor}`}>
+                      <div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center">
                         <span className="material-icons text-2xl">{icon}</span>
                       </div>
                       <div>
@@ -251,45 +265,60 @@ export default function ChallengesPage() {
                       </div>
                     </div>
                     <div>
-                      {challenge.status === 'in-progress' && (
+                      {challenge.status === ChallengeStatus.Active && challenge.isJoined && (
                         <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-full font-medium">
                           In Progress
                         </span>
                       )}
-                      {challenge.status === 'new' && (
-                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
-                          New
-                        </span>
-                      )}
-                      {challenge.status === 'not-started' && (
+                      {challenge.status === ChallengeStatus.Active && !challenge.isJoined && (
                         <span className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded-full font-medium">
                           Not Started
+                        </span>
+                      )}
+                      {challenge.status === ChallengeStatus.Completed && (
+                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
+                          Completed
                         </span>
                       )}
                     </div>
                   </div>
                   {selectedChallengeId === challenge.id && (
-                    <div className="mt-4 p-6 bg-red rounded-xl shadow-sm border">
-                      <h4 className="text-xl font-bold text-gray-900 mb-2">{challenge.name} Details</h4>
-                      <p className="mb-4">{challenge.description}</p>
-                      <div className="mb-4">
-                        <p>
-                          <span className="font-semibold">Category:</span> {challenge.category}
-                        </p>
-                        <p>
-                          <span className="font-semibold">Difficulty:</span> {challenge.difficulty}
-                        </p>
-                        <p>
-                          <span className="font-semibold">Days Left:</span> {challenge.daysLeft}
-                        </p>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${challenge.progress}%` }}></div>
+                    <div className="mt-4 p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                      <h4 className="text-2xl font-bold text-gray-900 mb-4">{challenge.name} Details</h4>
+                      <p className="mb-4 text-gray-700">{challenge.description}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div className="space-y-3">
+                          <p className="text-gray-500">
+                            <span className="font-semibold">Category:</span> {ChallengeCategory[challenge.category]}
+                          </p>
+                          <p className="text-gray-500">
+                            <span className="font-semibold">Min Stake:</span> {challenge.minStake}
+                          </p>
+                          <p className="text-gray-500">
+                            <span className="font-semibold">Pool Size:</span> {challenge.poolSize}
+                          </p>
+                        </div>
+                        <div className="space-y-3">
+                          <p className="text-gray-500">
+                            <span className="font-semibold">Days Left:</span> {challenge.daysLeft}
+                          </p>
+                          <div>
+                            <p className="text-gray-500 text-sm mb-1">Time Progress</p>
+                            <div className="w-full bg-gray-200 rounded-full h-3">
+                              <div className="bg-emerald-500 h-3 rounded-full" style={{ width: `${calculateProgress(challenge.startDate, challenge.endDate)}%` }}></div>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-sm mb-1">Completion</p>
+                            <div className="w-full bg-gray-200 rounded-full h-3">
+                              <div className="bg-blue-500 h-3 rounded-full" style={{ width: `${challenge.progress}%` }}></div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      {/* If challenge requires a video submission (e.g. strength challenge), render LiveDetection */}
                       {challenge.subType === 'strength' && (
-                        <div className="mt-4">
-                          <h5 className="text-lg font-semibold mb-2">Record Your Exercise</h5>
+                        <div className="mt-6">
+                          <h5 className="text-xl font-semibold mb-3">Record Your Exercise</h5>
                           <LiveDetection />
                         </div>
                       )}
