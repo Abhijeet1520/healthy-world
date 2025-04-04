@@ -3,7 +3,7 @@
 import eruda from "eruda";
 import { ReactNode, useEffect } from "react";
 
-export const Eruda = (props: { children: ReactNode }) => {
+export const ErudaProvider = (props: { children: ReactNode }) => {
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
