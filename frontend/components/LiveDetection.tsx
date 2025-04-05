@@ -167,11 +167,7 @@ export class ExerciseDetectionService {
         // Angle text
         canvasCtx.font = "24px Arial";
         canvasCtx.fillStyle = "white";
-        canvasCtx.fillText(
-          `Angle: ${Math.round(angle)}°`,
-          landmarks[p2].x * canvasElement.width,
-          landmarks[p2].y * canvasElement.height - 20
-        );
+        canvasCtx.fillText(`Angle: ${Math.round(angle)}°`, landmarks[p2].x * canvasElement.width, landmarks[p2].y * canvasElement.height - 20);
       }
     }
   }
@@ -188,7 +184,6 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   // Mode: live or upload
   const [mode, setMode] = useState<"live" | "upload">("live");
   const [recording, setRecording] = useState(false);
-  const detectionRef = useRef<ExerciseDetectionService | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [hasPermissions, setHasPermissions] = useState<boolean | null>(null);
   const [repCount, setRepCount] = useState(0);
@@ -209,23 +204,20 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   // Automatically select exercise based on subType
   const exercise = EXERCISES.find((ex) => ex.id === exerciseSubType) || EXERCISES[0];
 
-  // When in live mode, check camera permissions via react-webcam's onUserMedia
+  // Check camera permissions via react-webcam's onUserMedia
   const handleUserMedia = useCallback((stream: MediaStream) => {
     setHasPermissions(true);
   }, []);
 
   // Initialize detection service
+  const detectionRef = useRef<ExerciseDetectionService | null>(null);
   useEffect(() => {
     detectionRef.current = new ExerciseDetectionService();
   }, [mode]);
 
   // Live mode: start detection and recording using the react-webcam video element
   useEffect(() => {
-    if (mode === "live") {
-      if (!isDetecting) {
-        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-        return;
-      }
+    if (mode === "live" && isDetecting) {
       const videoEl = webcamRef.current?.video;
       if (!videoEl || !canvasRef.current) return;
       const detectPose = () => {
@@ -251,7 +243,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   };
 
   // API endpoint from env variable (with fallback)
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const apiUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL || "http://localhost:8000";
 
   // Submit live recorded video to API (with analysis)
   const handleLiveSubmit = async () => {
@@ -268,7 +260,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
         });
         if (response.ok) {
           const data = await response.json();
-          alert(`Live recorded video for ${exercise.name} submitted! Reps: ${data.total_completions}`);
+          alert(`Live video for ${exercise.name} submitted! Reps: ${data.total_completions}`);
           setRecordedVideoUrl(null);
           setRecordedChunks([]);
         } else {
@@ -371,7 +363,9 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
 
     const processFrame = (timestamp: number) => {
       if (tempVideo.paused || tempVideo.ended) {
-        cancelAnimationFrame(processedAnimationFrameRef.current);
+        if (processedAnimationFrameRef.current !== undefined) {
+          cancelAnimationFrame(processedAnimationFrameRef.current);
+        }
         setAnalyzedRepCount(analysisRepCount);
         procCanvas.toBlob((blob) => {
           if (blob) {
@@ -383,7 +377,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
       }
       detectionRef.current?.processVideoFrame(
         tempVideo,
-        procCanvas,
+        procCanvas!,
         performance.now(),
         (count) => {
           analysisRepCount = count;
@@ -432,23 +426,36 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
       {mode === "live" ? (
         <>
           <div className="mt-6 flex flex-col md:flex-row gap-8">
-            {/* Live Webcam Feed */}
+            {/* Live Webcam Feed or Placeholder */}
             <div className="relative w-full md:w-1/2 aspect-video bg-black rounded-lg overflow-hidden">
               {hasPermissions === false ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                   <p>Camera permission required</p>
                 </div>
+              ) : isDetecting ? (
+                <>
+                  <Webcam
+                    audio={false}
+                    ref={webcamRef}
+                    videoConstraints={{ width: 640, height: 480 }}
+                    className="w-full h-full object-cover"
+                    onUserMedia={handleUserMedia}
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    className="absolute inset-0 w-full h-full"
+                    width={640}
+                    height={480}
+                  />
+                  <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                    Reps: {repCount}
+                  </div>
+                </>
               ) : (
-                <Webcam
-                  audio={false}
-                  ref={webcamRef}
-                  videoConstraints={{ width: 640, height: 480 }}
-                  className="w-full h-full object-cover"
-                  onUserMedia={handleUserMedia}
-                />
+                <div className="absolute inset-0 flex items-center justify-center bg-black">
+                  <p className="text-white">Press &quot;Start Recording&quot; to begin</p>
+                </div>
               )}
-              {/* Overlay canvas for detection */}
-              <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" width={640} height={480} />
             </div>
 
             {/* Stats & Controls */}
@@ -496,9 +503,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
               )}
               {analyzedVideoUrl && (
                 <div className="mt-4">
-                  <p className="text-sm text-gray-300">
-                    Analyzed Rep Count: {analyzedRepCount}
-                  </p>
+                  <p className="text-sm text-gray-300">Analyzed Rep Count: {analyzedRepCount}</p>
                   <video src={analyzedVideoUrl} controls className="w-full rounded-lg" />
                 </div>
               )}
@@ -534,7 +539,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
           </button>
         </div>
       )}
-      {/* Processed Video Canvas for Analysis (hidden) */}
+      {/* Hidden canvas for processing recorded video */}
       <canvas ref={processedCanvasRef} className="hidden" width={640} height={480} />
     </div>
   );
