@@ -479,7 +479,7 @@ export default function ChallengesPage() {
                           </div>
 
                           {/* For Exercise challenges, show LiveDetection (pass subType directly) */}
-                          {challenge.category === ChallengeCategory.Exercise && (
+                          {challenge.category === ChallengeCategory.Exercise && challenge.status !== ChallengeStatus.Completed && (
                             <motion.div
                               initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}

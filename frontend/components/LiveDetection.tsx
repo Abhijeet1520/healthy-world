@@ -124,7 +124,6 @@ export class ExerciseDetectionService {
     onRepUpdate: (count: number) => void
   ) {
     if (!this.poseLandmarker || !this.currentExercise) return;
-
     const canvasCtx = canvasElement.getContext("2d");
     if (!canvasCtx) return;
 
@@ -132,11 +131,12 @@ export class ExerciseDetectionService {
       this.drawingUtils = new DrawingUtils(canvasCtx);
     }
 
+    // Only do detection if the frame changed
     if (this.lastVideoTime !== videoElement.currentTime) {
       this.lastVideoTime = videoElement.currentTime;
       const results = this.poseLandmarker.detectForVideo(videoElement, timestamp);
 
-      // Draw video
+      // Clear and draw the base image
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
       canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
 
@@ -145,7 +145,7 @@ export class ExerciseDetectionService {
         const [p1, p2, p3] = this.currentExercise.joints;
         const angle = this.calculateAngle(landmarks, p1, p2, p3);
 
-        // Draw pose
+        // Draw skeleton
         this.drawingUtils.drawLandmarks(landmarks, {
           radius: (data) => DrawingUtils.lerp(data.from!.z, -0.15, 0.1, 5, 1),
         });
@@ -155,7 +155,7 @@ export class ExerciseDetectionService {
         this.updateRepCount(angle);
         onRepUpdate(this.repCount);
 
-        // Visual indicator
+        // Visual indicators (angles/joints)
         const color = this.isGoingUp ? "#00ff00" : "#ff0000";
         canvasCtx.beginPath();
         canvasCtx.arc(landmarks[p1].x * canvasElement.width, landmarks[p1].y * canvasElement.height, 8, 0, 2 * Math.PI);
@@ -164,188 +164,165 @@ export class ExerciseDetectionService {
         canvasCtx.fillStyle = color;
         canvasCtx.fill();
 
-        // Angle text
+        // Show angle text
         canvasCtx.font = "24px Arial";
         canvasCtx.fillStyle = "white";
-        canvasCtx.fillText(`Angle: ${Math.round(angle)}°`, landmarks[p2].x * canvasElement.width, landmarks[p2].y * canvasElement.height - 20);
+        canvasCtx.fillText(`Angle: ${Math.round(angle)}°`,
+          landmarks[p2].x * canvasElement.width,
+          landmarks[p2].y * canvasElement.height - 20
+        );
       }
     }
   }
 }
 
-// -----------------------------------------------------------------------
-// LiveDetection Component (using react-webcam)
-// -----------------------------------------------------------------------
+/** -----------------------------------------------------------------------
+ * 3) LiveDetection: The main React component using react-webcam
+ * ----------------------------------------------------------------------- */
 interface LiveDetectionProps {
-  exerciseSubType: string; // e.g. 'bicep-curl', 'squat', 'pushup'
+  exerciseSubType: string; // e.g. "bicep-curl" or "squat" or "pushup"
 }
 
 export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
-  // Mode: live or upload
+  // Display modes: "live" or "upload"
   const [mode, setMode] = useState<"live" | "upload">("live");
-  const [recording, setRecording] = useState(false);
+
+  // Are we actively detecting skeleton in the live feed?
   const [isDetecting, setIsDetecting] = useState(false);
+
+  // Are we currently recording from the live feed?
+  const [recording, setRecording] = useState(false);
+
+  // Camera permission status
   const [hasPermissions, setHasPermissions] = useState<boolean | null>(null);
+
+  // Real-time rep count
   const [repCount, setRepCount] = useState(0);
+
+  // For building a recorded video
   const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
   const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
+
+  // For user-uploaded videos
   const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
-  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+
+  // For analyzing a recorded or uploaded video offline
   const [analyzedVideoUrl, setAnalyzedVideoUrl] = useState<string | null>(null);
   const [analyzedRepCount, setAnalyzedRepCount] = useState<number>(0);
 
+  // Mediapipe detection instance
+  const detectionRef = useRef<ExerciseDetectionService | null>(null);
+
+  // Refs to react-webcam, overlay canvas, and hidden “processed” canvas
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const processedCanvasRef = useRef<HTMLCanvasElement>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const animationFrameRef = useRef<number>();
   const processedAnimationFrameRef = useRef<number>();
 
-  // Automatically select exercise based on subType
+  // Find the matching exercise from EXERCISES
   const exercise = EXERCISES.find((ex) => ex.id === exerciseSubType) || EXERCISES[0];
 
-  // Check camera permissions via react-webcam's onUserMedia
+  // Called by react-webcam when it first gets user media
   const handleUserMedia = useCallback((stream: MediaStream) => {
     setHasPermissions(true);
   }, []);
 
-  // Initialize detection service
-  const detectionRef = useRef<ExerciseDetectionService | null>(null);
+  /** Initialize the detection service on mount / whenever we change “mode” */
   useEffect(() => {
     detectionRef.current = new ExerciseDetectionService();
   }, [mode]);
 
-  // Live mode: start detection and recording using the react-webcam video element
+  /** If we're in "live" mode and detection is on, run the detection loop each frame. */
   useEffect(() => {
     if (mode === "live" && isDetecting) {
       const videoEl = webcamRef.current?.video;
-      if (!videoEl || !canvasRef.current) return;
-      const detectPose = () => {
+      if (!videoEl || !canvasRef.current || !detectionRef.current) return;
+
+      // Initialize detection once
+      detectionRef.current.initialize().catch((err) => {
+        console.error("Error init detection:", err);
+        setIsDetecting(false);
+      });
+      detectionRef.current.setExercise(exercise);
+
+      const detectFrame = () => {
+        if (!isDetecting) return; // stop if user toggled off
+
         detectionRef.current?.processVideoFrame(
           videoEl,
-          canvasRef.current,
+          canvasRef.current!,
           performance.now(),
           (count) => setRepCount(count)
         );
-        animationFrameRef.current = requestAnimationFrame(detectPose);
+
+        animationFrameRef.current = requestAnimationFrame(detectFrame);
       };
-      detectPose();
+      detectFrame();
     }
+    // Cleanup if user stops detection
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
   }, [isDetecting, exercise, mode]);
 
-  // Handle file selection in upload mode
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  /** Called if user picks a file in "upload" mode. */
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
       setUploadedVideo(file);
       setRecordedVideoUrl(URL.createObjectURL(file));
     }
-  };
+  }
 
-  // API endpoint from env variable (with fallback)
-  const apiUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL || "http://localhost:8000";
+  /** Switch between live vs. upload. Reset state. */
+  function switchMode(newMode: "live" | "upload") {
+    setMode(newMode);
+    setIsDetecting(false);
+    setRecording(false);
+    setRepCount(0);
+    setRecordedChunks([]);
+    setRecordedVideoUrl(null);
+    setAnalyzedVideoUrl(null);
+  }
 
-  // Submit live recorded video to API (with analysis)
-  const handleLiveSubmit = async () => {
-    if (recordedVideoUrl && recordedChunks.length > 0) {
-      const blob = new Blob(recordedChunks, { type: "video/webm" });
-      const formData = new FormData();
-      formData.append("file", blob, "recorded_video.webm");
-      formData.append("exercise_id", exercise.id);
-      formData.append("highlight_output", "false");
-      try {
-        const response = await fetch(`${apiUrl}/analyze-video`, {
-          method: "POST",
-          body: formData,
-        });
-        if (response.ok) {
-          const data = await response.json();
-          alert(`Live video for ${exercise.name} submitted! Reps: ${data.total_completions}`);
-          setRecordedVideoUrl(null);
-          setRecordedChunks([]);
-        } else {
-          alert("Failed to submit live video.");
-        }
-      } catch (error) {
-        console.error("Error submitting live video:", error);
-        alert("Error submitting live video.");
-      }
-    }
-  };
-
-  // Submit uploaded video to API
-  const handleUploadSubmit = async () => {
-    if (uploadedVideo) {
-      const formData = new FormData();
-      formData.append("file", uploadedVideo, uploadedVideo.name);
-      formData.append("exercise_id", exercise.id);
-      formData.append("highlight_output", "false");
-      try {
-        const response = await fetch(`${apiUrl}/analyze-video`, {
-          method: "POST",
-          body: formData,
-        });
-        if (response.ok) {
-          const data = await response.json();
-          alert(`Uploaded video for ${exercise.name} submitted! Reps: ${data.total_completions}`);
-          setRecordedVideoUrl(null);
-          setUploadedVideo(null);
-        } else {
-          alert("Failed to submit uploaded video.");
-        }
-      } catch (error) {
-        console.error("Error submitting uploaded video:", error);
-        alert("Error submitting uploaded video.");
-      }
-    }
-  };
-
-  // Setup MediaRecorder for live recording using react-webcam's stream
-  useEffect(() => {
-    if (mode === "live" && recording && webcamRef.current?.stream) {
-      const stream = webcamRef.current.stream as MediaStream;
-      try {
-        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: "video/webm" });
-        mediaRecorderRef.current.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            setRecordedChunks((prev) => [...prev, event.data]);
-          }
-        };
-        mediaRecorderRef.current.start();
-      } catch (error) {
-        console.error("MediaRecorder error:", error);
-      }
-    }
-  }, [recording, mode]);
-
-  // Handlers for live recording start/stop
-  const handleStartRecording = () => {
+  /** Start the detection + recording in live mode */
+  function handleStartRecording() {
     setIsDetecting(true);
     setRecording(true);
     setRepCount(0);
     setRecordedChunks([]);
     setRecordedVideoUrl(null);
     setAnalyzedVideoUrl(null);
-  };
+  }
 
-  const handleStopRecording = () => {
+  /** Stop detection + finalize the recording. */
+  function handleStopRecording() {
     setIsDetecting(false);
     setRecording(false);
+
+    // Stop the media recorder
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
+
+    // Build a preview URL
     setTimeout(() => {
       if (recordedChunks.length > 0) {
         const blob = new Blob(recordedChunks, { type: "video/webm" });
-        const url = URL.createObjectURL(blob);
-        setRecordedVideoUrl(url);
+        setRecordedVideoUrl(URL.createObjectURL(blob));
       }
-    }, 500);
-  };
+    }, 400);
+  }
 
-  // Process recorded video (analysis mode)
-  const processRecordedVideo = () => {
-    if (!recordedVideoUrl) return;
+  /** Once we have a recorded or uploaded video, we can re-run detection offline. */
+  function processRecordedVideo() {
+    if (!recordedVideoUrl || !processedCanvasRef.current) return;
+
+    setAnalyzedRepCount(0);
+
     const tempVideo = document.createElement("video");
     tempVideo.src = recordedVideoUrl;
     tempVideo.crossOrigin = "anonymous";
@@ -353,64 +330,104 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     tempVideo.playsInline = true;
     tempVideo.play();
 
-    const procCanvas = processedCanvasRef.current;
-    if (!procCanvas) return;
-    const procCtx = procCanvas.getContext("2d");
-    if (!procCtx) return;
-
     let analysisRepCount = 0;
     detectionRef.current?.setExercise(exercise);
 
-    const processFrame = (timestamp: number) => {
+    const offlineCanvas = processedCanvasRef.current;
+    const canvasCtx = offlineCanvas.getContext("2d");
+    if (!canvasCtx) return;
+
+    const offlineDetect = () => {
       if (tempVideo.paused || tempVideo.ended) {
-        if (processedAnimationFrameRef.current !== undefined) {
-          cancelAnimationFrame(processedAnimationFrameRef.current);
-        }
+        cancelAnimationFrame(processedAnimationFrameRef.current!);
         setAnalyzedRepCount(analysisRepCount);
-        procCanvas.toBlob((blob) => {
+
+        // Optionally create a new processed video from that canvas:
+        offlineCanvas.toBlob((blob) => {
           if (blob) {
-            const url = URL.createObjectURL(blob);
-            setAnalyzedVideoUrl(url);
+            setAnalyzedVideoUrl(URL.createObjectURL(blob));
           }
         }, "video/webm");
         return;
       }
-      detectionRef.current?.processVideoFrame(
-        tempVideo,
-        procCanvas!,
-        performance.now(),
-        (count) => {
-          analysisRepCount = count;
-        }
-      );
-      processedAnimationFrameRef.current = requestAnimationFrame(processFrame);
+      detectionRef.current?.processVideoFrame(tempVideo, offlineCanvas, performance.now(), (count) => {
+        analysisRepCount = count;
+      });
+      processedAnimationFrameRef.current = requestAnimationFrame(offlineDetect);
     };
-    processedAnimationFrameRef.current = requestAnimationFrame(processFrame);
-  };
+    requestAnimationFrame(offlineDetect);
+  }
+
+  /** In real usage, you might submit the final chunk blob to a backend. */
+  async function handleLiveSubmit() {
+    if (!recordedVideoUrl || recordedChunks.length === 0) return;
+
+    const blob = new Blob(recordedChunks, { type: "video/webm" });
+    const formData = new FormData();
+    formData.append("file", blob, "recorded_video.webm");
+    formData.append("exercise_id", exercise.id);
+
+    // Example: post to your backend
+    try {
+      const resp = await fetch("/api/submit-live-video", { method: "POST", body: formData });
+      if (!resp.ok) throw new Error("Server error submitting video");
+      const data = await resp.json();
+      alert(`Submitted live video! Reps: ${data.total_completions}`);
+    } catch (err) {
+      console.error("Error uploading live video:", err);
+    }
+  }
+
+  /** If user wants to submit an uploaded file. */
+  async function handleUploadSubmit() {
+    if (!uploadedVideo) return;
+
+    const formData = new FormData();
+    formData.append("file", uploadedVideo, uploadedVideo.name);
+    formData.append("exercise_id", exercise.id);
+
+    try {
+      const resp = await fetch("/api/submit-uploaded-video", { method: "POST", body: formData });
+      if (!resp.ok) throw new Error("Server error");
+      const data = await resp.json();
+      alert(`Uploaded video reps: ${data.total_completions}`);
+    } catch (err) {
+      console.error("Error uploading file:", err);
+    }
+  }
+
+  /** Once we enable "recording", start the MediaRecorder from react-webcam's stream. */
+  useEffect(() => {
+    if (mode === "live" && recording && webcamRef.current?.stream) {
+      const stream = webcamRef.current.stream;
+      try {
+        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: "video/webm" });
+        mediaRecorderRef.current.ondataavailable = (evt) => {
+          if (evt.data.size > 0) {
+            setRecordedChunks((prev) => [...prev, evt.data]);
+          }
+        };
+        mediaRecorderRef.current.start();
+      } catch (err) {
+        console.error("MediaRecorder error:", err);
+      }
+    }
+  }, [recording, mode]);
 
   return (
     <div className="bg-gray-900 text-white p-6 rounded-lg shadow-lg">
-      {/* Mode Toggle */}
+      {/* Toggles for live vs. upload */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Exercise Trainer</h2>
-        <div className="flex space-x-4">
+        <div className="flex gap-4">
           <button
-            onClick={() => {
-              setMode("live");
-              setRecordedVideoUrl(null);
-              setAnalyzedVideoUrl(null);
-            }}
+            onClick={() => switchMode("live")}
             className={`px-4 py-2 rounded ${mode === "live" ? "bg-green-600" : "bg-gray-700"}`}
           >
             Live
           </button>
           <button
-            onClick={() => {
-              setMode("upload");
-              setIsDetecting(false);
-              setRecordedVideoUrl(null);
-              setAnalyzedVideoUrl(null);
-            }}
+            onClick={() => switchMode("upload")}
             className={`px-4 py-2 rounded ${mode === "upload" ? "bg-green-600" : "bg-gray-700"}`}
           >
             Upload
@@ -418,15 +435,14 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-start gap-4">
-        <p className="text-lg font-semibold">{exercise.name}</p>
-        <div className="text-gray-400 text-sm sm:ml-auto">{exercise.description}</div>
-      </div>
+      {/* Show the chosen exercise */}
+      <p className="text-lg font-semibold">{exercise.name}</p>
+      <p className="text-gray-400 text-sm mb-4">{exercise.description}</p>
 
       {mode === "live" ? (
         <>
-          <div className="mt-6 flex flex-col md:flex-row gap-8">
-            {/* Live Webcam Feed or Placeholder */}
+          {/* LIVE MODE */}
+          <div className="flex flex-col md:flex-row gap-6">
             <div className="relative w-full md:w-1/2 aspect-video bg-black rounded-lg overflow-hidden">
               {hasPermissions === false ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/70">
@@ -437,8 +453,8 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
                   <Webcam
                     audio={false}
                     ref={webcamRef}
+                    className="absolute inset-0 w-full h-full object-cover"
                     videoConstraints={{ width: 640, height: 480 }}
-                    className="w-full h-full object-cover"
                     onUserMedia={handleUserMedia}
                   />
                   <canvas
@@ -447,29 +463,31 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
                     width={640}
                     height={480}
                   />
-                  <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                  <div className="absolute top-2 left-2 bg-black/50 text-white px-2 py-1 rounded">
                     Reps: {repCount}
                   </div>
                 </>
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-black">
-                  <p className="text-white">Press &quot;Start Recording&quot; to begin</p>
+                  <p className="text-white">Click "Start Recording" to begin detection</p>
                 </div>
               )}
             </div>
 
-            {/* Stats & Controls */}
-            <div className="w-full md:w-1/2 bg-gray-800 p-6 rounded-lg border border-gray-700">
-              <h3 className="text-xl font-semibold mb-4">Exercise Stats</h3>
-              <div className="mb-4">
-                <p className="text-gray-400">Repetitions</p>
+            {/* Stats + controls */}
+            <div className="w-full md:w-1/2 space-y-4">
+              <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                <h3 className="text-xl font-semibold mb-2">Stats</h3>
+                <p className="text-gray-400 text-sm">Current Reps</p>
                 <p className="text-4xl font-bold text-blue-400">{repCount}</p>
               </div>
-              <div className="flex gap-4">
+
+              <div className="flex gap-2">
+                {/* Start or stop */}
                 {!recording && !recordedVideoUrl && (
                   <button
                     onClick={handleStartRecording}
-                    className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white flex items-center"
+                    className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 flex items-center text-white"
                   >
                     <Play className="h-4 w-4 mr-2" />
                     Start Recording
@@ -478,69 +496,81 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
                 {recording && (
                   <button
                     onClick={handleStopRecording}
-                    className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white flex items-center"
+                    className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 flex items-center text-white"
                   >
                     <Square className="h-4 w-4 mr-2" />
-                    End Recording
+                    Stop
                   </button>
                 )}
+                {/* If we have a recorded video, user can submit or analyze offline */}
                 {recordedVideoUrl && (
                   <button
                     onClick={handleLiveSubmit}
-                    className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white flex items-center"
+                    className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     Submit Live Video
                   </button>
                 )}
               </div>
+
+              {/* Recorded video preview + analyze button */}
               {recordedVideoUrl && (
-                <button
-                  onClick={processRecordedVideo}
-                  className="mt-4 px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  Analyze Recorded Video
-                </button>
+                <div>
+                  <video src={recordedVideoUrl} controls className="mt-3 w-full rounded-lg" />
+                  <button
+                    onClick={processRecordedVideo}
+                    className="mt-3 px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    Analyze Recorded Video
+                  </button>
+                </div>
               )}
+
+              {/* Processed/Analyzed video + final rep count */}
               {analyzedVideoUrl && (
                 <div className="mt-4">
                   <p className="text-sm text-gray-300">Analyzed Rep Count: {analyzedRepCount}</p>
-                  <video src={analyzedVideoUrl} controls className="w-full rounded-lg" />
+                  <video src={analyzedVideoUrl} controls className="w-full mt-2 rounded-lg" />
                 </div>
               )}
             </div>
           </div>
         </>
       ) : (
-        // Upload Mode
-        <div className="mt-6">
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2" htmlFor="videoUpload">
-              Select a video file to upload:
-            </label>
-            <input
-              type="file"
-              id="videoUpload"
-              accept="video/*"
-              onChange={handleFileChange}
-              className="w-full text-gray-700"
-            />
-          </div>
+        // UPLOAD MODE
+        <div className="mt-4">
+          <label className="block mb-2 text-gray-300" htmlFor="videoUpload">
+            Pick a video file:
+          </label>
+          <input
+            type="file"
+            id="videoUpload"
+            accept="video/*"
+            onChange={handleFileChange}
+            className="text-gray-700"
+          />
           {recordedVideoUrl && (
-            <div className="mb-4">
+            <div className="mt-4">
               <video src={recordedVideoUrl} controls className="w-full rounded-lg" />
             </div>
           )}
           <button
-            onClick={handleUploadSubmit}
             disabled={!recordedVideoUrl}
-            className="w-full sm:w-auto px-4 py-2 rounded-lg font-medium text-white transition-colors bg-blue-600 hover:bg-blue-700"
+            onClick={handleUploadSubmit}
+            className="mt-4 px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white"
           >
-            Submit Video
+            Submit Uploaded Video
           </button>
         </div>
       )}
-      {/* Hidden canvas for processing recorded video */}
-      <canvas ref={processedCanvasRef} className="hidden" width={640} height={480} />
+
+      {/* Hidden canvas for offline re-analysis of recorded videos */}
+      <canvas
+        ref={processedCanvasRef}
+        width={640}
+        height={480}
+        // className="hidden"
+      />
     </div>
   );
 }
