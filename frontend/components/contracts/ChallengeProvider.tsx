@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { ethers } from 'ethers'
 import { useAuth } from '@/components/minikit-provider'
+import { MiniKit } from '@worldcoin/minikit-js'
 
 // ABI imports
 import HealthyWorldChallengesABI from '@/abis/HealthyWorldChallenges.json'
@@ -119,7 +120,7 @@ export const useChallenges = () => useContext(ChallengeContext);
 
 // Provider component
 export function ChallengeProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, userData } = useAuth();
+  const { isAuthenticated, userData, walletAddress } = useAuth();
   
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
@@ -292,25 +293,57 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
   
   // Function to join a challenge
   const joinChallenge = async (challengeId: number, stakeAmount: string) => {
-    if (!challengesContract || !tokenContract || !signer) return false;
+    if (!MiniKit.isInstalled() || !walletAddress) return false;
     
     try {
-      const signerAddress = await signer.getAddress();
+      // Convert the amount to Wei format
+      const amountWei = ethers.utils.parseEther(stakeAmount).toString();
       
-      // First approve the token transfer
-      const amountWei = ethers.utils.parseEther(stakeAmount);
-      const approvalTx = await tokenContract.approve(CHALLENGES_CONTRACT_ADDRESS, amountWei);
-      await approvalTx.wait();
+      // Create deadline 30 minutes in the future
+      const deadline = Math.floor((Date.now() + 30 * 60 * 1000) / 1000).toString();
       
-      // Then join the challenge
-      const joinTx = await challengesContract.joinChallenge(challengeId, amountWei);
-      await joinTx.wait();
+      // Create permit2 transfer data
+      const permitTransfer = {
+        permitted: {
+          token: WLD_TOKEN_ADDRESS,
+          amount: amountWei,
+        },
+        spender: CHALLENGES_CONTRACT_ADDRESS,
+        nonce: Date.now().toString(),
+        deadline,
+      };
       
-      // Refresh data
-      await refreshChallenges();
-      await refreshBalance();
+      // Format arguments for the joinChallenge function
+      const joinChallengeArgs = [
+        challengeId.toString(), 
+        amountWei
+      ];
       
-      return true;
+      // Send transaction using MiniKit
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [
+          {
+            address: CHALLENGES_CONTRACT_ADDRESS,
+            abi: HealthyWorldChallengesABI.abi,
+            functionName: 'joinChallenge',
+            args: joinChallengeArgs,
+          },
+        ],
+        permit2: [permitTransfer],
+      });
+      
+      if (finalPayload.status === 'success') {
+        console.log('Successfully joined challenge:', finalPayload.transaction_id);
+        
+        // Refresh data after successful transaction
+        await refreshChallenges();
+        await refreshBalance();
+        
+        return true;
+      } else {
+        console.error('Error joining challenge:', finalPayload);
+        return false;
+      }
     } catch (error) {
       console.error('Error joining challenge:', error);
       return false;
@@ -327,7 +360,7 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
     dataSourceType = "manual",
     dataSourceId = "app"
   ) => {
-    if (!challengesContract) return false;
+    if (!MiniKit.isInstalled() || !walletAddress) return false;
     
     try {
       // Prepare proof data (empty in this case)
@@ -336,21 +369,37 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
       // Convert sleep hours to integer representation (e.g. 7.5 -> 750)
       const sleepHoursInt = Math.floor(sleepHours * 100);
       
-      // Submit data to contract
-      const tx = await challengesContract.submitHealthData(
-        challengeId,
-        steps,
-        waterCups,
-        sleepHoursInt,
-        mindfulMinutes,
+      // Format arguments for the submitHealthData function
+      const submitHealthDataArgs = [
+        challengeId.toString(),
+        steps.toString(),
+        waterCups.toString(),
+        sleepHoursInt.toString(),
+        mindfulMinutes.toString(),
         dataSourceType,
         dataSourceId,
         proofData
-      );
+      ];
       
-      await tx.wait();
+      // Send transaction using MiniKit
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [
+          {
+            address: CHALLENGES_CONTRACT_ADDRESS,
+            abi: HealthyWorldChallengesABI.abi,
+            functionName: 'submitHealthData',
+            args: submitHealthDataArgs,
+          },
+        ],
+      });
       
-      return true;
+      if (finalPayload.status === 'success') {
+        console.log('Successfully submitted health data:', finalPayload.transaction_id);
+        return true;
+      } else {
+        console.error('Error submitting health data:', finalPayload);
+        return false;
+      }
     } catch (error) {
       console.error('Error submitting health data:', error);
       return false;
@@ -364,24 +413,40 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
     reps: number,
     sets: number
   ) => {
-    if (!challengesContract) return false;
+    if (!MiniKit.isInstalled() || !walletAddress) return false;
     
     try {
       // Prepare proof data (empty in this case)
       const proofData = "0x"; // no proof for manual entry
       
-      // Submit data to contract
-      const tx = await challengesContract.submitExerciseData(
-        challengeId,
+      // Format arguments for the submitExerciseData function
+      const submitExerciseDataArgs = [
+        challengeId.toString(),
         exerciseName,
-        reps,
-        sets,
+        reps.toString(),
+        sets.toString(),
         proofData
-      );
+      ];
       
-      await tx.wait();
+      // Send transaction using MiniKit
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [
+          {
+            address: CHALLENGES_CONTRACT_ADDRESS,
+            abi: HealthyWorldChallengesABI.abi,
+            functionName: 'submitExerciseData',
+            args: submitExerciseDataArgs,
+          },
+        ],
+      });
       
-      return true;
+      if (finalPayload.status === 'success') {
+        console.log('Successfully submitted exercise data:', finalPayload.transaction_id);
+        return true;
+      } else {
+        console.error('Error submitting exercise data:', finalPayload);
+        return false;
+      }
     } catch (error) {
       console.error('Error submitting exercise data:', error);
       return false;
@@ -390,16 +455,37 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
   
   // Function to claim rewards
   const claimRewards = async (challengeId: number) => {
-    if (!challengesContract) return false;
+    if (!MiniKit.isInstalled() || !walletAddress) return false;
     
     try {
-      const tx = await challengesContract.claimRewards(challengeId);
-      await tx.wait();
+      // Format arguments for the claimRewards function
+      const claimRewardsArgs = [
+        challengeId.toString()
+      ];
       
-      // Refresh balance
-      await refreshBalance();
+      // Send transaction using MiniKit
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [
+          {
+            address: CHALLENGES_CONTRACT_ADDRESS,
+            abi: HealthyWorldChallengesABI.abi,
+            functionName: 'claimRewards',
+            args: claimRewardsArgs,
+          },
+        ],
+      });
       
-      return true;
+      if (finalPayload.status === 'success') {
+        console.log('Successfully claimed rewards:', finalPayload.transaction_id);
+        
+        // Refresh balance
+        await refreshBalance();
+        
+        return true;
+      } else {
+        console.error('Error claiming rewards:', finalPayload);
+        return false;
+      }
     } catch (error) {
       console.error('Error claiming rewards:', error);
       return false;

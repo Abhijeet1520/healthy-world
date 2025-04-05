@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { ethers } from 'ethers'
 import { useAuth } from '@/components/minikit-provider'
 import HealthDataVerificationABI from '@/abis/HealthDataVerification.json'
+import { MiniKit } from '@worldcoin/minikit-js'
 
 // Contract addresses - would need to be updated based on deployment
 const HEALTH_DATA_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_HEALTH_DATA_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000'
@@ -224,30 +225,41 @@ export function HealthDataProvider({ children }: { children: ReactNode }) {
     metadata: string = '{}',
     challengeId: number = 0
   ): Promise<string> => {
-    if (!contract || !walletAddress) {
-      throw new Error('Contract not initialized or user not authenticated')
+    if (!MiniKit.isInstalled() || !walletAddress) {
+      throw new Error('MiniKit not installed or user not authenticated')
     }
     
     try {
-      const transaction = await contract.submitHealthData(
+      // Format arguments for the submitHealthData function
+      const submitHealthDataArgs = [
         walletAddress,
         dataType,
-        value,
-        challengeId,
+        value.toString(),
+        challengeId.toString(),
         metadata
-      )
+      ];
       
-      const receipt = await transaction.wait()
+      // Send transaction using MiniKit
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [
+          {
+            address: HEALTH_DATA_CONTRACT_ADDRESS,
+            abi: HealthDataVerificationABI.abi,
+            functionName: 'submitHealthData',
+            args: submitHealthDataArgs,
+          },
+        ],
+      });
       
-      // Find the HealthDataSubmitted event in the receipt
-      const event = receipt.events?.find((e: any) => e.event === 'HealthDataSubmitted')
-      
-      if (event && event.args) {
-        const submissionId = event.args.submissionId
+      if (finalPayload.status === 'success') {
+        console.log('Successfully submitted health data:', finalPayload.transaction_id);
+        
+        // Since we can't access the event directly, we'll use a placeholder ID until refresh
+        const tempSubmissionId = `temp-${Date.now()}`;
         
         // Add to local state
         const newSubmission: HealthDataSubmission = {
-          id: submissionId,
+          id: tempSubmissionId,
           user: walletAddress,
           dataType,
           value,
@@ -255,29 +267,30 @@ export function HealthDataProvider({ children }: { children: ReactNode }) {
           status: 'Pending',
           challengeId,
           metadata
-        }
+        };
         
-        setSubmissions(prev => [...prev, newSubmission])
+        setSubmissions(prev => [...prev, newSubmission]);
         
         // Update today's totals
         if (dataType === HEALTH_DATA_TYPES.STEPS) {
-          setTodaySubmissions(prev => ({ ...prev, steps: prev.steps + value }))
+          setTodaySubmissions(prev => ({ ...prev, steps: prev.steps + value }));
         } else if (dataType === HEALTH_DATA_TYPES.WATER) {
-          setTodaySubmissions(prev => ({ ...prev, water: prev.water + value }))
+          setTodaySubmissions(prev => ({ ...prev, water: prev.water + value }));
         } else if (dataType === HEALTH_DATA_TYPES.SLEEP) {
-          setTodaySubmissions(prev => ({ ...prev, sleep: prev.sleep + value }))
+          setTodaySubmissions(prev => ({ ...prev, sleep: prev.sleep + value }));
         }
         
-        // Refresh data after submission
-        await refreshData()
+        // Refresh data after submission to get the real submission ID
+        await refreshData();
         
-        return submissionId
+        return tempSubmissionId;
+      } else {
+        console.error('Error submitting health data:', finalPayload);
+        throw new Error('Failed to submit health data');
       }
-      
-      throw new Error('Failed to submit health data, no event emitted')
     } catch (error) {
-      console.error('Error submitting health data:', error)
-      throw error
+      console.error('Error submitting health data:', error);
+      throw error;
     }
   }
   
