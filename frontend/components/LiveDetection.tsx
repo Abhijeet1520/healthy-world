@@ -184,6 +184,8 @@ interface LiveDetectionProps {
 }
 
 export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
+  // Mode: live or upload
+  const [mode, setMode] = useState<"live" | "upload">("live");
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detectionRef = useRef<ExerciseDetectionService | null>(null);
@@ -192,147 +194,193 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   const [isDetecting, setIsDetecting] = useState(false);
   const [hasPermissions, setHasPermissions] = useState<boolean | null>(null);
   const [repCount, setRepCount] = useState(0);
+  const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
 
   // Find the exercise from subType (fallback to first if not found)
   const exercise = EXERCISES.find((ex) => ex.id === exerciseSubType) || EXERCISES[0];
 
   useEffect(() => {
     detectionRef.current = new ExerciseDetectionService();
-    // Check camera permissions
-    const checkPermissions = async () => {
-      try {
-        const result = await navigator.permissions.query({ name: "camera" as PermissionName });
-        setHasPermissions(result.state === "granted");
-      } catch (error) {
-        setHasPermissions(true);
-      }
-    };
-    checkPermissions();
-
+    if (mode === "live") {
+      const checkPermissions = async () => {
+        try {
+          const result = await navigator.permissions.query({ name: "camera" as PermissionName });
+          setHasPermissions(result.state === "granted");
+        } catch (error) {
+          setHasPermissions(true);
+        }
+      };
+      checkPermissions();
+    }
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      if (videoRef.current?.srcObject) {
-        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((track) => track.stop());
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isDetecting) {
-      // Stop detection
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
         tracks.forEach((track) => track.stop());
       }
-      return;
-    }
+    };
+  }, [mode]);
 
-    // Start detection
-    const startCamera = async () => {
-      if (!videoRef.current || !canvasRef.current || !exercise) return;
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480 },
-        });
-        videoRef.current.srcObject = stream;
-
-        await detectionRef.current?.initialize();
-        detectionRef.current?.setExercise(exercise);
-
-        setHasPermissions(true);
-        detectPose();
-      } catch (err) {
-        console.error("Error accessing webcam:", err);
-        setHasPermissions(false);
-        setIsDetecting(false);
+  useEffect(() => {
+    if (mode === "live") {
+      if (!isDetecting) {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        if (videoRef.current?.srcObject) {
+          const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+          tracks.forEach((track) => track.stop());
+        }
+        return;
       }
-    };
+      const startCamera = async () => {
+        if (!videoRef.current || !canvasRef.current || !exercise) return;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 },
+          });
+          videoRef.current.srcObject = stream;
+          await detectionRef.current?.initialize();
+          detectionRef.current?.setExercise(exercise);
+          setHasPermissions(true);
+          detectPose();
+        } catch (err) {
+          console.error("Error accessing webcam:", err);
+          setHasPermissions(false);
+          setIsDetecting(false);
+        }
+      };
+      const detectPose = () => {
+        if (!isDetecting || !videoRef.current || !canvasRef.current) return;
+        detectionRef.current?.processVideoFrame(
+          videoRef.current,
+          canvasRef.current,
+          performance.now(),
+          (count) => setRepCount(count)
+        );
+        animationFrameRef.current = requestAnimationFrame(detectPose);
+      };
+      startCamera();
+    }
+  }, [isDetecting, exercise, mode]);
 
-    const detectPose = () => {
-      if (!isDetecting || !videoRef.current || !canvasRef.current) return;
-      detectionRef.current?.processVideoFrame(videoRef.current, canvasRef.current, performance.now(), (count) => {
-        setRepCount(count);
-      });
-      animationFrameRef.current = requestAnimationFrame(detectPose);
-    };
+  // Handle file selection in upload mode
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setUploadedVideo(file);
+      setVideoPreviewUrl(URL.createObjectURL(file));
+    }
+  };
 
-    startCamera();
-  }, [isDetecting, exercise]);
+  const handleUploadSubmit = () => {
+    if (uploadedVideo) {
+      alert(`Uploaded video "${uploadedVideo.name}" for ${exercise.name} submitted!`);
+      setUploadedVideo(null);
+      setVideoPreviewUrl(null);
+    }
+  };
 
   return (
     <div className="bg-gray-900 text-white p-6 rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold mb-4">Exercise Trainer</h2>
-      <div className="flex flex-col sm:flex-row items-start gap-4">
-        <div className="flex items-center gap-4">
-          <p className="text-lg font-semibold">{exercise?.name}</p>
+      {/* Mode toggle */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold">Exercise Trainer</h2>
+        <div className="flex space-x-4">
           <button
-            onClick={() => setIsDetecting(!isDetecting)}
-            disabled={hasPermissions === false}
-            className={`px-4 py-2 rounded flex items-center ${isDetecting ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"
-              } text-white`}
+            onClick={() => setMode("live")}
+            className={`px-4 py-2 rounded ${mode === "live" ? "bg-green-600" : "bg-gray-700"}`}
           >
-            {isDetecting ? <Square className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-            {isDetecting ? "Stop" : "Start"}
+            Live
+          </button>
+          <button
+            onClick={() => setMode("upload")}
+            className={`px-4 py-2 rounded ${mode === "upload" ? "bg-green-600" : "bg-gray-700"}`}
+          >
+            Upload
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-start gap-4">
+        <p className="text-lg font-semibold">{exercise.name}</p>
         <div className="text-gray-400 text-sm sm:ml-auto">{exercise.description}</div>
       </div>
 
-      <div className="mt-6 flex flex-col md:flex-row gap-8">
-        {/* Video & Canvas */}
-        <div className="relative w-full md:w-1/2 aspect-video bg-black rounded-lg overflow-hidden">
-          {hasPermissions === false && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-              <p>Camera permission required</p>
+      {mode === "live" ? (
+        <div className="mt-6 flex flex-col md:flex-row gap-8">
+          {/* Video & Canvas */}
+          <div className="relative w-full md:w-1/2 aspect-video bg-black rounded-lg overflow-hidden">
+            {hasPermissions === false && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                <p>Camera permission required</p>
+              </div>
+            )}
+            {hasPermissions !== false && exercise && (
+              <>
+                <video
+                  ref={videoRef}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  autoPlay
+                  playsInline
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="absolute inset-0 w-full h-full"
+                  width={640}
+                  height={480}
+                />
+              </>
+            )}
+          </div>
+          {/* Stats */}
+          <div className="w-full md:w-1/2 bg-gray-800 p-6 rounded-lg border border-gray-700">
+            <h3 className="text-xl font-semibold mb-4">Exercise Stats</h3>
+            <div className="mb-4">
+              <p className="text-gray-400">Exercise</p>
+              <p className="text-white text-xl">{exercise.name}</p>
+            </div>
+            <div className="mb-4">
+              <p className="text-gray-400">Repetitions</p>
+              <p className="text-4xl font-bold text-blue-400">{repCount}</p>
+            </div>
+            <h4 className="text-lg font-semibold mt-6 mb-2">Tips</h4>
+            <ul className="list-disc list-inside text-gray-300 space-y-1">
+              <li>Stand in a well-lit area</li>
+              <li>Ensure your full body is visible</li>
+              <li>Perform the exercise at a controlled pace</li>
+              <li>Maintain proper form throughout</li>
+            </ul>
+          </div>
+        </div>
+      ) : (
+        // Upload mode
+        <div className="mt-6">
+          <div className="mb-4">
+            <label className="block text-gray-300 mb-2" htmlFor="videoUpload">
+              Select a video file to upload:
+            </label>
+            <input
+              type="file"
+              id="videoUpload"
+              accept="video/*"
+              onChange={handleFileChange}
+              className="w-full text-gray-700"
+            />
+          </div>
+          {videoPreviewUrl && (
+            <div className="mb-4">
+              <video src={videoPreviewUrl} controls className="w-full rounded-lg" />
             </div>
           )}
-          {!exercise && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-              <p>No exercise found</p>
-            </div>
-          )}
-          {hasPermissions !== false && exercise && (
-            <>
-              <video
-                ref={videoRef}
-                className="absolute inset-0 w-full h-full object-cover"
-                autoPlay
-                playsInline
-              />
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-0 w-full h-full"
-                width={640}
-                height={480}
-              />
-            </>
-          )}
+          <button
+            onClick={handleUploadSubmit}
+            disabled={!uploadedVideo}
+            className="w-full sm:w-auto px-4 py-2 rounded-lg font-medium text-white transition-colors bg-blue-600 hover:bg-blue-700"
+          >
+            Submit Video
+          </button>
         </div>
-
-        {/* Stats */}
-        <div className="w-full md:w-1/2 bg-gray-800 p-6 rounded-lg border border-gray-700">
-          <h3 className="text-xl font-semibold mb-4">Exercise Stats</h3>
-          <div className="mb-4">
-            <p className="text-gray-400">Exercise</p>
-            <p className="text-white text-xl">{exercise?.name}</p>
-          </div>
-          <div className="mb-4">
-            <p className="text-gray-400">Repetitions</p>
-            <p className="text-4xl font-bold text-blue-400">{repCount}</p>
-          </div>
-          <h4 className="text-lg font-semibold mt-6 mb-2">Tips</h4>
-          <ul className="list-disc list-inside text-gray-300 space-y-1">
-            <li>Stand in a well-lit area</li>
-            <li>Ensure your full body is visible</li>
-            <li>Perform the exercise at a controlled pace</li>
-            <li>Maintain proper form throughout each rep</li>
-          </ul>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -108,7 +108,7 @@ export default function ChallengesPage() {
   const [selectedChallengeId, setSelectedChallengeId] = useState<number | null>(null)
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "in-progress" | "not-started">("all")
 
-  // Simulate API call to fetch challenges (mock data)
+  // Load mock data
   useEffect(() => {
     const timer = setTimeout(() => {
       setChallenges([
@@ -204,8 +204,7 @@ export default function ChallengesPage() {
     if (activeFilter === "all") return true
     if (
       activeFilter === "active" &&
-      (challenge.status === ChallengeStatus.Active ||
-        challenge.status === ChallengeStatus.Judging)
+      (challenge.status === ChallengeStatus.Active || challenge.status === ChallengeStatus.Judging)
     )
       return true
     if (activeFilter === "in-progress" && challenge.status === ChallengeStatus.Active)
@@ -215,7 +214,6 @@ export default function ChallengesPage() {
     return false
   })
 
-  // Dummy function to calculate progress percentage based on time
   const calculateProgress = (startDate: Date, endDate: Date) => {
     const now = new Date().getTime()
     const start = startDate.getTime()
@@ -231,7 +229,6 @@ export default function ChallengesPage() {
 
   // Simulated submit function for video recording
   const handleSubmitVideo = (challengeId: number) => {
-    // Replace this with your API call to submit the video blob.
     alert(`Video for challenge ${challengeId} submitted!`)
   }
 
@@ -292,8 +289,9 @@ export default function ChallengesPage() {
                     30-Day Fitness Challenge
                   </h3>
                   <p className="mb-4 text-emerald-100 text-sm sm:text-base">
-                    Complete a daily mix of activities including walking, strength training, and flexibility exercises
-                    for 30 days. Track your progress and see remarkable improvements in your fitness level!
+                    Complete a daily mix of activities including walking, strength training,
+                    and flexibility exercises for 30 days. Track your progress and see remarkable
+                    improvements in your fitness level!
                   </p>
                   <div className="flex flex-wrap gap-2 mb-4">
                     <span className="bg-white bg-opacity-20 rounded-full text-xs px-3 py-1">
@@ -480,7 +478,7 @@ export default function ChallengesPage() {
                             </div>
                           </div>
 
-                          {/* For Exercise challenges, pass the exercise details (based on subType) directly */}
+                          {/* For Exercise challenges, show LiveDetection (pass subType directly) */}
                           {challenge.category === ChallengeCategory.Exercise && (
                             <motion.div
                               initial={{ opacity: 0, y: 20 }}
@@ -492,12 +490,7 @@ export default function ChallengesPage() {
                                 <span className="material-icons mr-2 text-emerald-600">videocam</span>
                                 Record Your Exercise
                               </h5>
-                              {/* Look up the exercise details from the EXERCISES array by matching challenge.subType */}
-                              <LiveDetection
-                                exercise={
-                                  EXERCISES.find((ex) => ex.id === challenge.subType) || EXERCISES[0]
-                                }
-                              />
+                              <LiveDetection exerciseSubType={challenge.subType} />
                               <button
                                 onClick={() => handleSubmitVideo(challenge.id)}
                                 className="mt-4 w-full sm:w-auto px-4 py-2 rounded-lg font-medium text-white transition-colors bg-blue-600 hover:bg-blue-700"
@@ -517,9 +510,7 @@ export default function ChallengesPage() {
                                 <span className="material-icons mr-1 text-sm">
                                   {challenge.category === ChallengeCategory.Nutrition ? "local_drink" : "add_circle"}
                                 </span>
-                                {challenge.category === ChallengeCategory.Nutrition
-                                  ? "Join & Log Water"
-                                  : "Join Challenge"}
+                                {challenge.category === ChallengeCategory.Nutrition ? "Join & Log Water" : "Join Challenge"}
                               </motion.button>
                             )}
 
@@ -534,9 +525,7 @@ export default function ChallengesPage() {
                                   <span className="material-icons mr-1 text-sm">
                                     {challenge.category === ChallengeCategory.Nutrition ? "edit" : "check_circle"}
                                   </span>
-                                  {challenge.category === ChallengeCategory.Nutrition
-                                    ? "Log Nutrition"
-                                    : "Mark as Complete"}
+                                  {challenge.category === ChallengeCategory.Nutrition ? "Log Nutrition" : "Mark as Complete"}
                                 </motion.button>
                               )}
 
