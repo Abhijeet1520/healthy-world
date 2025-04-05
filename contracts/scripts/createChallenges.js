@@ -4,6 +4,9 @@ const { ethers } = require("hardhat");
 // The deployed contract address
 const CHALLENGES_CONTRACT_ADDRESS = "0x609b3BbC1fb62F5c6612aB7FA63458d4f572c24e";
 
+// The WLD token address
+const WLD_TOKEN_ADDRESS = "0x2cFc85d8E48F8EAB294be644d9E25C3030863003";
+
 // Enums for challenge status and categories (matching the contract's enums)
 const ChallengeCategory = {
   Common: 0,
@@ -18,21 +21,21 @@ const challengesToCreate = [
     description: "Complete 10 bicep curls daily for 5 consecutive days. Boost your arm strength!",
     category: ChallengeCategory.Exercise,
     subType: "bicep-curl",
-    startDate: Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60, // 7 days ago
-    endDate: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,   // 7 days from now
-    minStake: ethers.utils.parseEther("50"), // 50 WLD tokens
+    startDate: Math.floor(Date.now() / 1000) + 60 , // 1 hour in the future
+    endDate: Math.floor(Date.now() / 1000) + 14 * 24 * 60 * 60,   // 14 days from now
+    minStake: ethers.parseEther("0.1"), // 1 WLD tokens
     judges: [] // To be filled with judge addresses
   },
-  {
-    name: "Hydration Hero",
-    description: "Drink 8 cups of water daily for 7 consecutive days. Stay hydrated for optimal health!",
-    category: ChallengeCategory.Nutrition,
-    subType: "water",
-    startDate: Math.floor(Date.now() / 1000) - 10 * 24 * 60 * 60, // 10 days ago
-    endDate: Math.floor(Date.now() / 1000) + 4 * 24 * 60 * 60,    // 4 days from now
-    minStake: ethers.utils.parseEther("100"), // 100 WLD tokens
-    judges: [] // To be filled with judge addresses
-  }
+//   {
+//     name: "Hydration Hero",
+//     description: "Drink 8 cups of water daily for 7 consecutive days. Stay hydrated for optimal health!",
+//     category: ChallengeCategory.Nutrition,
+//     subType: "water",
+//     startDate: Math.floor(Date.now() / 1000) + 2 * 60 , // 2 hours in the future
+//     endDate: Math.floor(Date.now() / 1000) + 10 * 24 * 60 * 60,    // 10 days from now
+//     minStake: ethers.parseEther("0.01"),
+//     judges: [] // To be filled with judge addresses
+//   }
 ];
 
 async function main() {
@@ -53,14 +56,13 @@ async function main() {
     deployer
   );
   
-  // Get the WLD token address from the contract
-  const wldTokenAddress = await challengesContract.wldToken();
-  console.log(`WLD Token address: ${wldTokenAddress}`);
+  // Log the WLD token address we're using
+  console.log(`Using WLD Token address: ${WLD_TOKEN_ADDRESS}`);
   
-  // Connect to the WLD token contract
+  // Connect to the WLD token contract using the known address
   const wldToken = await ethers.getContractAt(
     "WorldHealthToken", 
-    wldTokenAddress,
+    WLD_TOKEN_ADDRESS,
     deployer
   );
   
@@ -117,13 +119,10 @@ async function joinChallenge(challengeId, stakeAmount, signer) {
       signer
     );
     
-    // Get the WLD token address from the contract
-    const wldTokenAddress = await challengesContract.wldToken();
-    
-    // Connect to the WLD token contract
+    // Connect to the WLD token contract using the known address
     const wldToken = await ethers.getContractAt(
       "WorldHealthToken", 
-      wldTokenAddress,
+      WLD_TOKEN_ADDRESS,
       signer
     );
     
