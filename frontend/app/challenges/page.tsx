@@ -49,7 +49,7 @@ const categoryIconMapping: Record<ChallengeCategory, string> = {
 
 // Mapping for subType icons
 const subTypeIconMapping: Record<string, string> = {
-  "bicep-curls": "fitness_center",
+  "bicep-curl": "fitness_center",
   water: "water_drop",
   mindfulness: "self_improvement",
   strength: "fitness_center",
@@ -118,7 +118,7 @@ export default function ChallengesPage() {
           description:
             "Complete 10 bicep curls daily for 5 consecutive days. Boost your arm strength!",
           category: ChallengeCategory.Exercise,
-          subType: "bicep-curls",
+          subType: "bicep-curl",
           startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
           endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           minStake: 50,
