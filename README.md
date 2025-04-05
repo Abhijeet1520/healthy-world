@@ -117,6 +117,20 @@ You can view the HealthyWorld smart contract on the World Chain Mainnet for deta
 
 [View HealthyWorld ENS transactions on WorldChain Mainnet Explorer](https://worldchain-mainnet.explorer.alchemy.com/address/0x8A9679F84A26532a7136c7f0Ab7721e243E4dd7A?tab=txs)
 
+## L2 Registry Address
+
+This environment variable designates the Layer 2 registry address used by HealthyWorld to connect with the correct checkpoint contract. It ensures that your application interacts with the intended Layer 2 infrastructure on the World Chain Mainnet.
+
+For more details, view the registry on the explorer:
+[Layer 2 Registry - WorldChain Mainnet Explorer](https://worldchain-mainnet.explorer.alchemy.com/address/0xba9f0059500df81eb4ab8ccd16fd3df379ba7c57?tab=txs)
+
+Set the registry address in your environment configuration as shown:
+
+```bash
+L2_REGISTRY_ADDRESS=0xba9f0059500df81eb4ab8ccd16fd3df379ba7c57
+```
+
+
 HealthyWorld also supports an ENS-based username registration system on the **World Coin mainnet chain**. This is made possible through a custom registrar contract, **HealthyWorldRegistrarImplementation**, which inherits from the official ENS `BaseRegistrarImplementation`. Here’s how it works:
 
 1. **Username Registration**
