@@ -169,7 +169,7 @@ class ExerciseDetectionService {
         this.maybeCountRep(angle);
         onRepUpdate(this.repCount);
 
-        // Draw skeleton
+        // Draw skeleton (for current exercise joints)
         this.drawingUtils.drawLandmarks(landmarks, {
           radius: (data) => DrawingUtils.lerp(data.from!.z, -0.15, 0.1, 5, 1),
         });
@@ -183,38 +183,56 @@ class ExerciseDetectionService {
         ctx.arc(landmarks[p3].x * canvasElement.width, landmarks[p3].y * canvasElement.height, 8, 0, 2 * Math.PI);
         ctx.fillStyle = color;
         ctx.fill();
-        // Draw overlay triangle (10% size of original triangle)
-        const cx = (landmarks[p1].x + landmarks[p2].x + landmarks[p3].x) / 3;
-        const cy = (landmarks[p1].y + landmarks[p2].y + landmarks[p3].y) / 3;
-        const scale = 0.1;
-        const scaledPoints = [
-          { x: cx + scale * (landmarks[p1].x - cx), y: cy + scale * (landmarks[p1].y - cy) },
-          { x: cx + scale * (landmarks[p2].x - cx), y: cy + scale * (landmarks[p2].y - cy) },
-          { x: cx + scale * (landmarks[p3].x - cx), y: cy + scale * (landmarks[p3].y - cy) },
-        ];
-        ctx.beginPath();
-        ctx.moveTo(scaledPoints[0].x * canvasElement.width, scaledPoints[0].y * canvasElement.height);
-        ctx.lineTo(scaledPoints[1].x * canvasElement.width, scaledPoints[1].y * canvasElement.height);
-        ctx.lineTo(scaledPoints[2].x * canvasElement.width, scaledPoints[2].y * canvasElement.height);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(255, 255, 0, 0.5)";
-        ctx.fill();
-        // Compute area of the triangle
-        const area = Math.abs(
-          landmarks[p1].x * (landmarks[p2].y - landmarks[p3].y) +
-          landmarks[p2].x * (landmarks[p3].y - landmarks[p1].y) +
-          landmarks[p3].x * (landmarks[p1].y - landmarks[p2].y)
-        ) / 2;
-        if(area < 0.001){
-          ctx.font = "24px Arial";
-          ctx.fillStyle = "white";
-          ctx.fillText("Move more",20,canvasElement.height - 40);
-        }
-        // Angle text
+        // Draw angle text
         ctx.font = "24px Arial";
         ctx.fillStyle = "white";
         const angleText = `Angle: ${Math.round(angle)}°`;
         ctx.fillText(angleText, landmarks[p2].x * canvasElement.width, landmarks[p2].y * canvasElement.height - 20);
+
+        // Draw endpoints for both hands and feet only (indices 15, 16, 27, 28)
+        const endpoints = [15, 16, 27, 28];
+        let sumX = 0, sumY = 0, count = 0;
+        endpoints.forEach(idx => {
+          if (results.landmarks[idx] !== undefined) {
+            sumX += results.landmarks[idx].x;
+            sumY += results.landmarks[idx].y;
+            count++;
+          }
+        });
+        if (count === endpoints.length) {
+          const cx = sumX / count;
+          const cy = sumY / count;
+          const scale = 0.1;
+          const scaledPoints = endpoints.map(idx => ({
+            x: cx + scale * (results.landmarks[idx].x - cx),
+            y: cy + scale * (results.landmarks[idx].y - cy)
+          }));
+          ctx.beginPath();
+          ctx.moveTo(scaledPoints[0].x * canvasElement.width, scaledPoints[0].y * canvasElement.height);
+          scaledPoints.slice(1).forEach(pt => {
+            ctx.lineTo(pt.x * canvasElement.width, pt.y * canvasElement.height);
+          });
+          ctx.closePath();
+          ctx.fillStyle = "rgba(255, 255, 0, 0.5)";
+          ctx.fill();
+          endpoints.forEach(idx => {
+            ctx.beginPath();
+            ctx.arc(results.landmarks[idx].x * canvasElement.width, results.landmarks[idx].y * canvasElement.height, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = "yellow";
+            ctx.fill();
+          });
+          let area = 0;
+          for (let i = 0; i < scaledPoints.length; i++) {
+            const j = (i + 1) % scaledPoints.length;
+            area += scaledPoints[i].x * scaledPoints[j].y - scaledPoints[j].x * scaledPoints[i].y;
+          }
+          area = Math.abs(area) / 2;
+          if (area < 0.001) {
+            ctx.font = "24px Arial";
+            ctx.fillStyle = "white";
+            ctx.fillText("Move more", 20, canvasElement.height - 40);
+          }
+        }
       }
     }
   }
@@ -500,7 +518,9 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
             <div className="w-full md:w-1/2 space-y-4">
               <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
                 <h3 className="text-xl font-semibold mb-2">Live Stats</h3>
-                <p className="text-gray-400">Repetitions: <span className="text-4xl font-bold text-blue-400">{repCount}</span></p>
+                <p className="text-gray-400">
+                  Repetitions: <span className="text-4xl font-bold text-blue-400">{repCount}</span>
+                </p>
               </div>
               <div className="flex gap-3">
                 {!recording && !recordedVideoUrl && (
