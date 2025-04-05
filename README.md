@@ -22,8 +22,8 @@ HealthyWorld is a comprehensive health and wellness tracker built as a mini app 
 
 1. Clone the repository:
    ```
-   git clone https://github.com/kamalbuilds/healthyworld.git
-   cd healthyworld
+   git clone https://github.com/abhijeet1520/healthy-world.git
+   cd healthy-world
    ```
 
 2. Install dependencies:
@@ -76,7 +76,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 cp .env.example .env
 pnpm i
 pnpm dev
-
 ```
 
 To run as a mini app choose a production app in the dev portal and use NGROK to tunnel. Set the `NEXTAUTH_URL` and the redirect url if using sign in with worldcoin to that ngrok url
@@ -101,3 +100,35 @@ To use the application, you'll need to:
 View docs: [Docs](https://docs.world.org/)
 
 [Developer Portal](https://developer.worldcoin.org/)
+
+---
+
+## ENS Integration and Registrar
+
+HealthyWorld also supports an ENS-based username registration system on the **World Coin mainnet chain**. This is made possible through a custom registrar contract, **HealthyWorldRegistrarImplementation**, which inherits from the official ENS `BaseRegistrarImplementation`. Here’s how it works:
+
+1. **Username Registration**
+   - When a user joins HealthyWorld, they can optionally register a username (e.g., `alice.healthyworld.eth`) via our ENS registrar on the World Coin mainnet chain.
+   - This username is an NFT minted by the registrar, tying your identity to the on-chain domain name.
+
+2. **Leaderboard and Health Data**
+   - The registrar contract also stores (or references) a leaderboard rank and other metrics associated with your username. This allows for on-chain verification of your achievements and ranking, making it easy to build trust in leaderboards.
+   - As users participate in challenges or earn rewards, their on-chain profile is updated with the latest achievements.
+
+3. **Transaction Hash**
+   - After registering your username or updating your health profile, you will receive a transaction hash. For example:
+     ```
+     0xb9f58...a3c7d9
+     ```
+     This hash serves as proof of the registration or update on the World Coin mainnet chain. You can click the hash in the app to view the details on the block explorer.
+
+4. **Why ENS?**
+   - By leveraging ENS, we enable a secure, decentralized naming system for user identities within HealthyWorld.
+   - ENS subdomains are widely recognized across Web3, so your username can be easily integrated with other applications or wallets in the future.
+
+5. **Integration Steps**
+   - **Add Controller**: We ensure that only authorized addresses (controllers) can create or renew domain registrations.
+   - **Register Username**: A user calls our `register(...)` function to mint the NFT and set associated health data.
+   - **Update Profile**: Whenever a user completes a challenge or improves their rank, the contract can update their on-chain leaderboard data.
+
+By combining ENS subdomains with the World App’s identity and payment features, HealthyWorld provides a seamless experience where your progress and achievements are cryptographically verifiable and portable across the wider blockchain ecosystem.
