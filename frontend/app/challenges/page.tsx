@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { motion, AnimatePresence } from "framer-motion"
-import { useSwipeable } from "react-swipeable"
 import LiveDetection from "@/components/LiveDetection"
 
 // Enums for challenge status and categories
@@ -98,16 +97,18 @@ const getIcon = (challenge: Challenge): string => {
     : categoryIconMapping[challenge.category] || "emoji_events"
 }
 
-// Helper: Get category name as a string
+// Helper: Get category name as string
 const getCategoryName = (category: ChallengeCategory): string => {
   return ChallengeCategory[category]
 }
 
 export default function ChallengesPage() {
-  // Using mock data for demonstration; replace with context if needed
   const [loading, setLoading] = useState(true)
   const [challenges, setChallenges] = useState<Challenge[]>([])
+  const [selectedChallengeId, setSelectedChallengeId] = useState<number | null>(null)
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "in-progress" | "not-started">("all")
 
+  // Simulate API call to fetch challenges (mock data)
   useEffect(() => {
     const timer = setTimeout(() => {
       setChallenges([
@@ -198,14 +199,6 @@ export default function ChallengesPage() {
     return () => clearTimeout(timer)
   }, [])
 
-  // Filter state (and details toggle)
-  const [activeFilter, setActiveFilter] = useState<
-    "all" | "active" | "in-progress" | "not-started"
-  >("all")
-  const [selectedChallengeId, setSelectedChallengeId] = useState<number | null>(
-    null
-  )
-
   // Filter challenges based on selected filter
   const filteredChallenges = challenges.filter((challenge) => {
     if (activeFilter === "all") return true
@@ -236,8 +229,15 @@ export default function ChallengesPage() {
     setSelectedChallengeId((prev) => (prev === challengeId ? null : challengeId))
   }
 
+  // Simulate video submission to API
+  const handleSubmitVideo = (challengeId: number) => {
+    // In your real implementation, you would grab the recorded video blob from LiveDetection
+    // and submit it via fetch or another HTTP client.
+    alert(`Video for challenge ${challengeId} submitted!`)
+  }
+
   return (
-    <main className="min-h-screen pb-20" >
+    <main className="min-h-screen pb-20">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
         {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-gradient-to-b from-emerald-50 to-emerald-50/90 backdrop-blur-sm pt-4 pb-2 -mx-4 px-4 sm:static sm:bg-transparent sm:backdrop-blur-none sm:pt-0 sm:pb-0 sm:mx-0 sm:px-0">
@@ -257,21 +257,17 @@ export default function ChallengesPage() {
 
             {/* Desktop Filter Tabs */}
             <div className="hidden sm:flex bg-white shadow-sm rounded-lg p-1">
-              {(["all", "active", "in-progress", "not-started"] as const).map(
-                (filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => setActiveFilter(filter)}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      activeFilter === filter
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
-                  </button>
-                )
-              )}
+              {(["all", "active", "in-progress", "not-started"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    activeFilter === filter ? "bg-emerald-100 text-emerald-800" : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                >
+                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -324,9 +320,7 @@ export default function ChallengesPage() {
                       <span className="material-icons text-3xl sm:text-4xl">emoji_events</span>
                     </div>
                     <div className="text-base sm:text-lg font-bold">500 Points</div>
-                    <div className="text-xs sm:text-sm text-emerald-100">
-                      Premium Badge
-                    </div>
+                    <div className="text-xs sm:text-sm text-emerald-100">Premium Badge</div>
                   </div>
                 </div>
               </div>
@@ -353,28 +347,6 @@ export default function ChallengesPage() {
                 <div key={challenge.id}>
                   <motion.div
                     onClick={() => toggleChallengeDetails(challenge.id)}
-                    onTouchStart={(e) => {
-                      const touch = e.touches[0]
-                      const startY = touch.clientY
-
-                      const handleTouchMove = (e: TouchEvent) => {
-                        const currentY = e.touches[0].clientY
-                        const diff = currentY - startY
-                        if (diff < -50 && selectedChallengeId !== challenge.id) {
-                          setSelectedChallengeId(challenge.id)
-                          document.removeEventListener("touchmove", handleTouchMove)
-                        }
-                      }
-
-                      document.addEventListener("touchmove", handleTouchMove, { passive: true })
-
-                      const handleTouchEnd = () => {
-                        document.removeEventListener("touchmove", handleTouchMove)
-                        document.removeEventListener("touchend", handleTouchEnd)
-                      }
-
-                      document.addEventListener("touchend", handleTouchEnd, { once: true })
-                    }}
                     className={`bg-gradient-to-br ${bgClass} ${borderClass} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer p-4 sm:p-5`}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
@@ -415,7 +387,7 @@ export default function ChallengesPage() {
                         </span>
                       </div>
                     </div>
-                    {/* Mobile mini progress bar */}
+                    {/* Mobile-only mini progress bar */}
                     <div className="mt-3 sm:hidden">
                       <div className="w-full bg-white bg-opacity-50 rounded-full h-1.5">
                         <div
@@ -435,47 +407,38 @@ export default function ChallengesPage() {
                         transition={{ duration: 0.3 }}
                         className="overflow-hidden"
                       >
-                        <div className="mt-4 p-4 sm:p-6 bg-white rounded-xl shadow-lg border border-gray-200">
-                          <motion.div
-                            className="flex justify-center sm:hidden mb-3"
-                            initial={{ opacity: 0.5 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ repeat: 2, duration: 1 }}
-                          >
-                            <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
-                            <div className="absolute text-xs text-gray-400 mt-3">Swipe down to close</div>
-                          </motion.div>
+                        <div className="mt-2 sm:mt-4 p-4 sm:p-6 bg-white rounded-xl shadow-lg border border-gray-200">
                           <h4 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 flex items-center">
                             <span className={`material-icons mr-2 ${textClass}`}>{icon}</span>
-                            {challenge.name}
+                            {challenge.name} Details
                           </h4>
                           <p className="mb-4 sm:mb-6 text-gray-700 text-sm sm:text-base">
                             {challenge.description}
                           </p>
 
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
-                            <div className="p-3 rounded-lg bg-opacity-10" style={{ background: `linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))` }}>
+                            <div className={`p-3 rounded-lg bg-opacity-10 ${bgClass}`}>
                               <p className="text-xs text-gray-500 mb-1">Category</p>
                               <p className={`font-medium ${textClass} text-sm sm:text-base flex items-center`}>
                                 <span className="material-icons mr-1 text-sm">category</span>
                                 {getCategoryName(challenge.category)}
                               </p>
                             </div>
-                            <div className="p-3 rounded-lg bg-opacity-10" style={{ background: `linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))` }}>
+                            <div className={`p-3 rounded-lg bg-opacity-10 ${bgClass}`}>
                               <p className="text-xs text-gray-500 mb-1">Min Stake</p>
                               <p className={`font-medium ${textClass} text-sm sm:text-base flex items-center`}>
                                 <span className="material-icons mr-1 text-sm">toll</span>
                                 {challenge.minStake} Points
                               </p>
                             </div>
-                            <div className="p-3 rounded-lg bg-opacity-10" style={{ background: `linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))` }}>
+                            <div className={`p-3 rounded-lg bg-opacity-10 ${bgClass}`}>
                               <p className="text-xs text-gray-500 mb-1">Pool Size</p>
                               <p className={`font-medium ${textClass} text-sm sm:text-base flex items-center`}>
                                 <span className="material-icons mr-1 text-sm">savings</span>
                                 {challenge.poolSize} Points
                               </p>
                             </div>
-                            <div className="p-3 rounded-lg bg-opacity-10" style={{ background: `linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))` }}>
+                            <div className={`p-3 rounded-lg bg-opacity-10 ${bgClass}`}>
                               <p className="text-xs text-gray-500 mb-1">Days Left</p>
                               <p className={`font-medium ${textClass} text-sm sm:text-base flex items-center`}>
                                 <span className="material-icons mr-1 text-sm">schedule</span>
@@ -520,32 +483,8 @@ export default function ChallengesPage() {
                             </div>
                           </div>
 
-                          <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
-                            <div className="flex justify-between items-center mb-2">
-                              <h5 className="font-semibold text-gray-800 text-sm sm:text-base">Participants</h5>
-                              <span className="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full">
-                                {challenge.participantCount} Total
-                              </span>
-                            </div>
-                            <div className="flex items-center">
-                              <div className="flex -space-x-2 mr-3">
-                                {[...Array(5)].map((_, i) => (
-                                  <div
-                                    key={i}
-                                    className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-300 border-2 border-white flex items-center justify-center text-xs text-gray-600"
-                                  >
-                                    {String.fromCharCode(65 + i)}
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="text-xs sm:text-sm text-gray-600">
-                                {challenge.completedCount} completed •{" "}
-                                {challenge.participantCount - challenge.completedCount} in progress
-                              </div>
-                            </div>
-                          </div>
-
-                          {challenge.subType === "strength" && (
+                          {/* If the challenge is of Exercise category, show recording section */}
+                          {challenge.category === ChallengeCategory.Exercise && (
                             <motion.div
                               initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}
@@ -557,6 +496,12 @@ export default function ChallengesPage() {
                                 Record Your Exercise
                               </h5>
                               <LiveDetection />
+                              <button
+                                onClick={() => handleSubmitVideo(challenge.id)}
+                                className="mt-4 w-full sm:w-auto px-4 py-2 rounded-lg font-medium text-white transition-colors bg-blue-600 hover:bg-blue-700"
+                              >
+                                Submit Video
+                              </button>
                             </motion.div>
                           )}
 
@@ -567,8 +512,10 @@ export default function ChallengesPage() {
                                 whileTap={{ scale: 0.95 }}
                                 className={`${buttonClass} text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center shadow-sm text-sm sm:text-base`}
                               >
-                                <span className="material-icons mr-1 text-sm">add_circle</span>
-                                Join Challenge
+                                <span className="material-icons mr-1 text-sm">
+                                  {challenge.category === ChallengeCategory.Nutrition ? "local_drink" : "add_circle"}
+                                </span>
+                                {challenge.category === ChallengeCategory.Nutrition ? "Join & Log Water" : "Join Challenge"}
                               </motion.button>
                             )}
 
@@ -580,8 +527,10 @@ export default function ChallengesPage() {
                                   whileTap={{ scale: 0.95 }}
                                   className={`${buttonClass} text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center shadow-sm text-sm sm:text-base`}
                                 >
-                                  <span className="material-icons mr-1 text-sm">check_circle</span>
-                                  Mark as Complete
+                                  <span className="material-icons mr-1 text-sm">
+                                    {challenge.category === ChallengeCategory.Nutrition ? "edit" : "check_circle"}
+                                  </span>
+                                  {challenge.category === ChallengeCategory.Nutrition ? "Log Nutrition" : "Mark as Complete"}
                                 </motion.button>
                               )}
 

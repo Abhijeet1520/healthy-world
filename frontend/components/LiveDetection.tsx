@@ -6,7 +6,7 @@ import { Play, Square, Home } from "lucide-react";
 import { PoseLandmarker, DrawingUtils, FilesetResolver } from "@mediapipe/tasks-vision";
 
 // -----------------------------------------------------------------------
-// Type Definitions and Mock Data
+// Type Definitions and Mock Data for Exercises
 // -----------------------------------------------------------------------
 export type Exercise = {
   id: string;
@@ -160,7 +160,7 @@ export class ExerciseDetectionService {
 }
 
 // -----------------------------------------------------------------------
-// LiveDetection Component (Using Tailwind CSS)
+// LiveDetection Component (Tailwind CSS)
 // -----------------------------------------------------------------------
 export default function LiveDetection() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -185,9 +185,7 @@ export default function LiveDetection() {
     };
     checkPermissions();
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
         tracks.forEach((track) => track.stop());
@@ -234,15 +232,15 @@ export default function LiveDetection() {
     startCamera();
   }, [isDetecting, selectedExercise]);
 
-  const handleExerciseChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const exerciseId = e.target.value;
-    const exercise = EXERCISES.find((ex) => ex.id === exerciseId);
-    if (exercise) {
-      setSelectedExercise(exercise);
-      setRepCount(0);
-      detectionRef.current?.setExercise(exercise);
+  // For this component, you may choose to set the exercise via props.
+  // For testing, we'll let the parent set selectedExercise. In production, you may integrate with a selector.
+  // Here we assume the exercise is already selected.
+  // For example, you could set the first exercise as default:
+  useEffect(() => {
+    if (!selectedExercise && EXERCISES.length > 0) {
+      setSelectedExercise(EXERCISES[0]);
     }
-  };
+  }, [selectedExercise]);
 
   return (
     <div className="bg-gray-900 text-white p-6 rounded-lg shadow-lg">
@@ -251,9 +249,17 @@ export default function LiveDetection() {
         <div className="flex items-center gap-4 mt-4 md:mt-0">
           <select
             value={selectedExercise?.id || ""}
-            onChange={handleExerciseChange}
+            onChange={(e) => {
+              const exerciseId = e.target.value;
+              const exercise = EXERCISES.find((ex) => ex.id === exerciseId);
+              if (exercise) {
+                setSelectedExercise(exercise);
+                setRepCount(0);
+                detectionRef.current?.setExercise(exercise);
+              }
+            }}
             disabled={isDetecting}
-            className="bg-gray-800 text-white p-2 rounded border border-gray-600"
+            className="bg-gray-800 text-white p-3 rounded border border-gray-600"
           >
             <option value="">Select Exercise</option>
             {EXERCISES.map((exercise) => (
@@ -274,11 +280,11 @@ export default function LiveDetection() {
           </button>
         </div>
       </div>
-      <div className="flex flex-col md:flex-row gap-6">
+      <div className="flex flex-col md:flex-row gap-8">
         <div className="relative w-full md:w-1/2 aspect-video bg-black rounded-lg overflow-hidden">
           {hasPermissions === false && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-              <p>Camera permission denied</p>
+              <p>Camera permission required</p>
             </div>
           )}
           {!selectedExercise && (
@@ -303,7 +309,7 @@ export default function LiveDetection() {
             </>
           )}
         </div>
-        <div className="w-full md:w-1/2 bg-gray-800 p-4 rounded-lg border border-gray-700">
+        <div className="w-full md:w-1/2 bg-gray-800 p-6 rounded-lg border border-gray-700">
           <h3 className="text-xl font-semibold mb-4">Exercise Stats</h3>
           <div className="mb-4">
             <p className="text-gray-400">Current Exercise</p>
@@ -319,9 +325,9 @@ export default function LiveDetection() {
               <p className="text-gray-300 mb-2">{selectedExercise.description}</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1">
                 <li>Stand in a well-lit area</li>
-                <li>Ensure your full body is visible to the camera</li>
+                <li>Ensure your full body is visible</li>
                 <li>Perform the exercise at a controlled pace</li>
-                <li>Maintain proper form throughout each rep</li>
+                <li>Maintain proper form throughout</li>
               </ul>
             </>
           )}
