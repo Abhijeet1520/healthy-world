@@ -153,7 +153,16 @@ class ExerciseDetectionService {
 
       if (results.landmarks && results.landmarks.length > 0) {
         const landmarks = results.landmarks[0];
+        // Check that required primary joints are present; if not, overlay message
         const [p1, p2, p3] = this.currentExercise.joints;
+        if(landmarks[p1] === undefined || landmarks[p2] === undefined || landmarks[p3] === undefined){
+          ctx.fillStyle = "rgba(0,0,0,0.7)";
+          ctx.fillRect(0,0,canvasElement.width,canvasElement.height);
+          ctx.font = "24px Arial";
+          ctx.fillStyle = "white";
+          ctx.fillText("Ensure your full body is in frame",20,40);
+          return;
+        }
         const angle = this.calculateAngle(landmarks, p1, p2, p3);
 
         // Possibly count a rep with cooldown logic
@@ -169,38 +178,43 @@ class ExerciseDetectionService {
         // Color for the main angle’s joint circles
         const color = this.isGoingUp ? "#00ff00" : "#ff0000";
         ctx.beginPath();
-        ctx.arc(landmarks[p1].x * canvasElement.width,
-          landmarks[p1].y * canvasElement.height,
-          8,
-          0,
-          2 * Math.PI
-        );
-        ctx.arc(
-          landmarks[p2].x * canvasElement.width,
-          landmarks[p2].y * canvasElement.height,
-          8,
-          0,
-          2 * Math.PI
-        );
-        ctx.arc(
-          landmarks[p3].x * canvasElement.width,
-          landmarks[p3].y * canvasElement.height,
-          8,
-          0,
-          2 * Math.PI
-        );
+        ctx.arc(landmarks[p1].x * canvasElement.width, landmarks[p1].y * canvasElement.height, 8, 0, 2 * Math.PI);
+        ctx.arc(landmarks[p2].x * canvasElement.width, landmarks[p2].y * canvasElement.height, 8, 0, 2 * Math.PI);
+        ctx.arc(landmarks[p3].x * canvasElement.width, landmarks[p3].y * canvasElement.height, 8, 0, 2 * Math.PI);
         ctx.fillStyle = color;
         ctx.fill();
-
+        // Draw overlay triangle (10% size of original triangle)
+        const cx = (landmarks[p1].x + landmarks[p2].x + landmarks[p3].x) / 3;
+        const cy = (landmarks[p1].y + landmarks[p2].y + landmarks[p3].y) / 3;
+        const scale = 0.1;
+        const scaledPoints = [
+          { x: cx + scale * (landmarks[p1].x - cx), y: cy + scale * (landmarks[p1].y - cy) },
+          { x: cx + scale * (landmarks[p2].x - cx), y: cy + scale * (landmarks[p2].y - cy) },
+          { x: cx + scale * (landmarks[p3].x - cx), y: cy + scale * (landmarks[p3].y - cy) },
+        ];
+        ctx.beginPath();
+        ctx.moveTo(scaledPoints[0].x * canvasElement.width, scaledPoints[0].y * canvasElement.height);
+        ctx.lineTo(scaledPoints[1].x * canvasElement.width, scaledPoints[1].y * canvasElement.height);
+        ctx.lineTo(scaledPoints[2].x * canvasElement.width, scaledPoints[2].y * canvasElement.height);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255, 255, 0, 0.5)";
+        ctx.fill();
+        // Compute area of the triangle
+        const area = Math.abs(
+          landmarks[p1].x * (landmarks[p2].y - landmarks[p3].y) +
+          landmarks[p2].x * (landmarks[p3].y - landmarks[p1].y) +
+          landmarks[p3].x * (landmarks[p1].y - landmarks[p2].y)
+        ) / 2;
+        if(area < 0.001){
+          ctx.font = "24px Arial";
+          ctx.fillStyle = "white";
+          ctx.fillText("Move more",20,canvasElement.height - 40);
+        }
         // Angle text
         ctx.font = "24px Arial";
         ctx.fillStyle = "white";
         const angleText = `Angle: ${Math.round(angle)}°`;
-        ctx.fillText(
-          angleText,
-          landmarks[p2].x * canvasElement.width,
-          landmarks[p2].y * canvasElement.height - 20
-        );
+        ctx.fillText(angleText, landmarks[p2].x * canvasElement.width, landmarks[p2].y * canvasElement.height - 20);
       }
     }
   }
@@ -235,7 +249,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   const [processedVideoUrl, setProcessedVideoUrl] = useState<string | null>(null);
   const [processedRepCount, setProcessedRepCount] = useState<number>(0);
   const [targetReps, setTargetReps] = useState<number>(10);
-
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   // Refs for react-webcam, canvas overlays, and MediaRecorder
   const webcamRef = useRef<Webcam>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -250,8 +264,8 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   const exercise = EXERCISES.find((ex) => ex.id === exerciseSubType) || EXERCISES[0];
 
   /** Switch between live vs upload */
-  function switchMode(nextMode: "live" | "upload") {
-    setMode(nextMode);
+  function switchMode(newMode: "live" | "upload") {
+    setMode(newMode);
     setIsDetecting(false);
     setRecording(false);
     setRecordedChunks([]);
@@ -278,7 +292,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
       const videoEl = webcamRef.current?.video;
       if (!videoEl || !liveCanvasRef.current || !detectionRef.current) return;
       detectionRef.current.initialize().then(() => {
-        detectionRef.current.setExercise(exercise);
+        detectionRef.current?.setExercise(exercise);
         const detectFrame = () => {
           if (!isDetecting) return;
           detectionRef.current?.processVideoFrame(
@@ -305,7 +319,8 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     setRecordedChunks([]);
     setRecordedVideoUrl(null);
     setProcessedVideoUrl(null);
-  };
+    setIsAnalyzing(false);
+  }
 
   // Live mode: Stop recording and finalize video
   const handleStopLive = () => {
@@ -340,7 +355,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     }
   }, [recording, mode]);
 
-  // Upload mode file handler
+  // Handle file selection in upload mode
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -353,6 +368,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   // Process recorded/uploaded video offline to generate an overlay video and rep count
   async function analyzeLocalVideo() {
     if (!recordedVideoUrl || !processedCanvasRef.current) return;
+    setIsAnalyzing(true);
     setProcessedRepCount(0);
 
     // Re-init the detection
@@ -384,6 +400,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
             setProcessedVideoUrl(url);
           }
         }, "video/webm");
+        setIsAnalyzing(false);
         return;
       }
 
@@ -400,7 +417,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     processedAnimationFrameRef.current = requestAnimationFrame(processFrame);
   }
 
-  // Submit functions for live and upload videos (omitted network calls for brevity)
+  // Submit functions for live and upload videos (placeholder implementations)
   async function handleLiveSubmit() {
     if (!recordedVideoUrl || recordedChunks.length === 0) return;
     alert(`Live video submitted! Reps: ${repCount}`);
@@ -465,6 +482,10 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
                     width={640}
                     height={480}
                   />
+                  {/* Overlay to prompt user to be fully in frame */}
+                  <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-1 rounded text-sm">
+                    Please ensure your full body is in frame
+                  </div>
                   {/* Show live rep count */}
                   {isDetecting && (
                     <div className="absolute top-2 left-2 bg-black/50 px-2 py-1 rounded-md text-white">
@@ -518,7 +539,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
                     onClick={analyzeLocalVideo}
                     className="mt-3 px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
-                    Analyze Recorded Video
+                    {isAnalyzing ? "Processing..." : "Analyze Recorded Video"}
                   </button>
                 </div>
               )}
@@ -545,7 +566,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
                 onClick={analyzeLocalVideo}
                 className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
               >
-                Analyze Uploaded Video
+                {isAnalyzing ? "Processing..." : "Analyze Uploaded Video"}
               </button>
             </div>
           )}
@@ -560,11 +581,11 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
 
       {/* Common Progress Bar for Both Modes */}
       <div className="mt-6">
-        <p className="text-sm">Progress: {repCount} / {targetReps} reps</p>
+        <p className="text-sm">Progress: {Math.min(repCount, targetReps)} / {targetReps} reps</p>
         <div className="w-full bg-gray-200 h-3 rounded-full">
           <div
             className="bg-blue-500 h-3 rounded-full"
-            style={{ width: `${(repCount / targetReps) * 100}%` }}
+            style={{ width: `${Math.min((repCount / targetReps) * 100, 100)}%` }}
           ></div>
         </div>
       </div>
