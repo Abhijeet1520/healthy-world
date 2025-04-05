@@ -169,8 +169,7 @@ class ExerciseDetectionService {
         // Color for the main angle’s joint circles
         const color = this.isGoingUp ? "#00ff00" : "#ff0000";
         ctx.beginPath();
-        ctx.arc(
-          landmarks[p1].x * canvasElement.width,
+        ctx.arc(landmarks[p1].x * canvasElement.width,
           landmarks[p1].y * canvasElement.height,
           8,
           0,
@@ -216,7 +215,7 @@ interface LiveDetectionProps {
 }
 
 export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
-  // Are we in "live" or "upload" mode
+  // Mode: "live" or "upload"
   const [mode, setMode] = useState<"live" | "upload">("live");
 
   // Real-time detection state
@@ -235,8 +234,9 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   // For final processed videos (live or uploaded) with overlays
   const [processedVideoUrl, setProcessedVideoUrl] = useState<string | null>(null);
   const [processedRepCount, setProcessedRepCount] = useState<number>(0);
+  const [targetReps, setTargetReps] = useState<number>(10);
 
-  // Refs
+  // Refs for react-webcam, canvas overlays, and MediaRecorder
   const webcamRef = useRef<Webcam>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
   const processedCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -246,7 +246,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   const animationFrameRef = useRef<number>();
   const processedAnimationFrameRef = useRef<number>();
 
-  // Which exercise from EXERCISES
+  // Select exercise based on subType
   const exercise = EXERCISES.find((ex) => ex.id === exerciseSubType) || EXERCISES[0];
 
   /** Switch between live vs upload */
@@ -272,50 +272,43 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     detectionRef.current = service;
   }, [mode]);
 
-  /** If we are in "live" mode and isDetecting is on => detection loop */
+  // Live mode detection loop using react-webcam's video element
   useEffect(() => {
-    if (mode !== "live" || !isDetecting) return;
-
-    const runDetection = async () => {
-      const service = detectionRef.current;
-      if (!service) return;
-      await service.initialize();
-      service.setExercise(exercise);
-
-      const detectFrame = () => {
-        if (!isDetecting) return;
-        const videoEl = webcamRef.current?.video;
-        const canvasEl = liveCanvasRef.current;
-        if (!videoEl || !canvasEl) return;
-
-        service.processVideoFrame(videoEl, canvasEl, performance.now(), (cnt) => {
-          setRepCount(cnt);
-        });
-        animationFrameRef.current = requestAnimationFrame(detectFrame);
-      };
-      detectFrame();
-    };
-
-    runDetection();
-
-    // Cleanup
+    if (mode === "live" && isDetecting) {
+      const videoEl = webcamRef.current?.video;
+      if (!videoEl || !liveCanvasRef.current || !detectionRef.current) return;
+      detectionRef.current.initialize().then(() => {
+        detectionRef.current.setExercise(exercise);
+        const detectFrame = () => {
+          if (!isDetecting) return;
+          detectionRef.current?.processVideoFrame(
+            videoEl,
+            liveCanvasRef.current!,
+            performance.now(),
+            (cnt) => setRepCount(cnt)
+          );
+          animationFrameRef.current = requestAnimationFrame(detectFrame);
+        };
+        detectFrame();
+      });
+    }
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [mode, isDetecting, exercise]);
+  }, [isDetecting, exercise, mode]);
 
-  /** Start detection + recording in live mode */
-  function handleStartLive() {
+  // Live mode: Start recording and detection
+  const handleStartLive = () => {
     setIsDetecting(true);
     setRecording(true);
     setRepCount(0);
     setRecordedChunks([]);
     setRecordedVideoUrl(null);
     setProcessedVideoUrl(null);
-  }
+  };
 
-  /** Stop detection + finalize the recording in live mode */
-  function handleStopLive() {
+  // Live mode: Stop recording and finalize video
+  const handleStopLive = () => {
     setIsDetecting(false);
     setRecording(false);
 
@@ -329,9 +322,9 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
         setRecordedVideoUrl(URL.createObjectURL(blob));
       }
     }, 400);
-  }
+  };
 
-  /** Once we are recording, attach a MediaRecorder to the react-webcam stream. */
+  // Attach MediaRecorder to react-webcam's stream when recording starts
   useEffect(() => {
     if (mode === "live" && recording && webcamRef.current?.stream) {
       try {
@@ -347,20 +340,19 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     }
   }, [recording, mode]);
 
-  /** If user picks a file in upload mode */
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  // Upload mode file handler
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadedVideo(file);
     setRecordedVideoUrl(URL.createObjectURL(file));
     setProcessedVideoUrl(null);
     setProcessedRepCount(0);
-  }
+  };
 
-  /** Process (analyze) a local video (recorded or uploaded) => show skeleton overlay */
+  // Process recorded/uploaded video offline to generate an overlay video and rep count
   async function analyzeLocalVideo() {
-    if (!recordedVideoUrl) return;
-    if (!processedCanvasRef.current) return;
+    if (!recordedVideoUrl || !processedCanvasRef.current) return;
     setProcessedRepCount(0);
 
     // Re-init the detection
@@ -374,14 +366,14 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     tempVideo.crossOrigin = "anonymous";
     tempVideo.muted = true;
     tempVideo.playsInline = true;
-    await tempVideo.play().catch(() => { /* ignore */ });
+    await tempVideo.play().catch(() => {});
 
     let localRepCount = 0;
     const ctx = processedCanvasRef.current.getContext("2d");
     if (!ctx) return;
 
-    const detectFrame = () => {
-      if (tempVideo.ended || tempVideo.paused) {
+    const processFrame = () => {
+      if (tempVideo.paused || tempVideo.ended) {
         cancelAnimationFrame(processedAnimationFrameRef.current!);
         setProcessedRepCount(localRepCount);
 
@@ -395,20 +387,38 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
         return;
       }
 
-      detectionRef.current?.processVideoFrame(tempVideo, processedCanvasRef.current!, performance.now(), (cnt) => {
-        localRepCount = cnt;
-      });
-      processedAnimationFrameRef.current = requestAnimationFrame(detectFrame);
+      detectionRef.current?.processVideoFrame(
+        tempVideo,
+        processedCanvasRef.current!,
+        performance.now(),
+        (cnt) => {
+          localRepCount = cnt;
+        }
+      );
+      processedAnimationFrameRef.current = requestAnimationFrame(processFrame);
     };
+    processedAnimationFrameRef.current = requestAnimationFrame(processFrame);
+  }
 
-    processedAnimationFrameRef.current = requestAnimationFrame(detectFrame);
+  // Submit functions for live and upload videos (omitted network calls for brevity)
+  async function handleLiveSubmit() {
+    if (!recordedVideoUrl || recordedChunks.length === 0) return;
+    alert(`Live video submitted! Reps: ${repCount}`);
+    // Reset state after submission if needed
+  }
+
+  async function handleUploadSubmit() {
+    if (!uploadedVideo) return;
+    alert("Uploaded video submitted!");
+    // Reset state after submission if needed
   }
 
   return (
     <div className="bg-gray-900 text-white p-6 rounded-lg shadow-lg">
+      {/* Mode Toggle */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Exercise Trainer</h2>
-        <div className="flex space-x-4">
+        <div className="flex gap-4">
           <button
             onClick={() => switchMode("live")}
             className={`px-4 py-2 rounded ${mode === "live" ? "bg-green-600" : "bg-gray-700"}`}
@@ -424,88 +434,99 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
         </div>
       </div>
 
+      {/* Display selected exercise */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold">{exercise.name}</h3>
         <p className="text-sm text-gray-400">{exercise.description}</p>
       </div>
 
       {mode === "live" ? (
-        <div className="space-y-4">
-          <div className="relative w-full aspect-video bg-black rounded-md overflow-hidden">
-            {hasPermissions === false ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-                <p>No camera permissions</p>
+        <>
+          <div className="flex flex-col md:flex-row gap-6">
+            {/* Live webcam feed with overlay canvas */}
+            <div className="relative w-full md:w-1/2 aspect-video bg-black rounded-md overflow-hidden">
+              {hasPermissions === false ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                  <p>No camera permissions</p>
+                </div>
+              ) : (
+                <>
+                  <Webcam
+                    ref={webcamRef}
+                    audio={false}
+                    videoConstraints={{ width: 640, height: 480 }}
+                    onUserMedia={handleUserMedia}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                  {/* Overlay canvas for real-time detection */}
+                  <canvas
+                    ref={liveCanvasRef}
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    width={640}
+                    height={480}
+                  />
+                  {/* Show live rep count */}
+                  {isDetecting && (
+                    <div className="absolute top-2 left-2 bg-black/50 px-2 py-1 rounded-md text-white">
+                      Reps: {repCount}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Live mode controls */}
+            <div className="w-full md:w-1/2 space-y-4">
+              <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                <h3 className="text-xl font-semibold mb-2">Live Stats</h3>
+                <p className="text-gray-400">Repetitions: <span className="text-4xl font-bold text-blue-400">{repCount}</span></p>
               </div>
-            ) : (
-              <>
-                <Webcam
-                  ref={webcamRef}
-                  audio={false}
-                  videoConstraints={{ width: 640, height: 480 }}
-                  onUserMedia={handleUserMedia}
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-                {/* Overlay canvas for real-time detection */}
-                <canvas
-                  ref={liveCanvasRef}
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  width={640}
-                  height={480}
-                />
-                {/* Show live rep count */}
-                {isDetecting && (
-                  <div className="absolute top-2 left-2 bg-black/50 px-2 py-1 rounded-md text-white">
-                    Reps: {repCount}
-                  </div>
+              <div className="flex gap-3">
+                {!recording && !recordedVideoUrl && (
+                  <button
+                    onClick={handleStartLive}
+                    className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white flex items-center"
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    Start Recording
+                  </button>
                 )}
-              </>
-            )}
-          </div>
-          <div className="flex gap-3">
-            {!recording && !recordedVideoUrl && (
-              <button
-                onClick={handleStartLive}
-                className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white flex items-center"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Start Recording
-              </button>
-            )}
-            {recording && (
-              <button
-                onClick={handleStopLive}
-                className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white flex items-center"
-              >
-                <Square className="h-4 w-4 mr-2" />
-                Stop
-              </button>
-            )}
-          </div>
-
-          {/* If we have a final recorded video, user can do local analysis */}
-          {recordedVideoUrl && (
-            <div className="mt-4">
-              <video src={recordedVideoUrl} controls className="w-full rounded" />
-              <div className="mt-2 flex gap-3">
-                <button
-                  onClick={analyzeLocalVideo}
-                  className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  Analyze Recorded Video
-                </button>
+                {recording && (
+                  <button
+                    onClick={handleStopLive}
+                    className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white flex items-center"
+                  >
+                    <Square className="h-4 w-4 mr-2" />
+                    Stop
+                  </button>
+                )}
+                {recordedVideoUrl && (
+                  <button
+                    onClick={handleLiveSubmit}
+                    className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white flex items-center"
+                  >
+                    Submit Live Video
+                  </button>
+                )}
               </div>
-            </div>
-          )}
 
-          {/* Show the final processed overlay as a video */}
-          {processedVideoUrl && (
-            <div className="mt-4">
-              <p>Processed Reps: {processedRepCount}</p>
-              {/* <video src={processedVideoUrl} controls className="w-full rounded" /> */}
+              {/* If we have a final recorded video, user can do local analysis */}
+              {recordedVideoUrl && (
+                <div>
+                  <video src={recordedVideoUrl} controls className="w-full rounded" />
+                  <button
+                    onClick={analyzeLocalVideo}
+                    className="mt-3 px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    Analyze Recorded Video
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        </>
       ) : (
+        // UPLOAD MODE
         <div className="space-y-4">
           <label className="block text-sm" htmlFor="fileUpload">
             Upload a video to analyze
@@ -518,7 +539,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
             onChange={handleFileChange}
           />
           {recordedVideoUrl && (
-            <div className="mt-3">
+            <div>
               <video src={recordedVideoUrl} controls className="w-full rounded mb-3" />
               <button
                 onClick={analyzeLocalVideo}
@@ -529,15 +550,26 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
             </div>
           )}
           {processedVideoUrl && (
-            <div className="mt-3">
+            <div>
               <p>Processed Reps: {processedRepCount}</p>
-              {/* <video src={processedVideoUrl} controls className="w-full rounded" /> */}
+              <video src={processedVideoUrl} controls className="w-full rounded" />
             </div>
           )}
         </div>
       )}
 
-      {/* Hidden canvas for offline re-analysis of local videos */}
+      {/* Common Progress Bar for Both Modes */}
+      <div className="mt-6">
+        <p className="text-sm">Progress: {repCount} / {targetReps} reps</p>
+        <div className="w-full bg-gray-200 h-3 rounded-full">
+          <div
+            className="bg-blue-500 h-3 rounded-full"
+            style={{ width: `${(repCount / targetReps) * 100}%` }}
+          ></div>
+        </div>
+      </div>
+
+      {/* Hidden canvas for offline re-analysis */}
       <canvas
         ref={processedCanvasRef}
         width={640}
