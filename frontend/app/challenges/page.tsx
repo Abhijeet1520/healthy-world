@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { motion, AnimatePresence } from "framer-motion"
 import LiveDetection from "@/components/LiveDetection"
+import { EXERCISES, Exercise } from "@/components/LiveDetection"
 
 // Enums for challenge status and categories
 enum ChallengeStatus {
@@ -229,10 +229,9 @@ export default function ChallengesPage() {
     setSelectedChallengeId((prev) => (prev === challengeId ? null : challengeId))
   }
 
-  // Simulate video submission to API
+  // Simulated submit function for video recording
   const handleSubmitVideo = (challengeId: number) => {
-    // In your real implementation, you would grab the recorded video blob from LiveDetection
-    // and submit it via fetch or another HTTP client.
+    // Replace this with your API call to submit the video blob.
     alert(`Video for challenge ${challengeId} submitted!`)
   }
 
@@ -254,7 +253,6 @@ export default function ChallengesPage() {
                 Health Challenges
               </h1>
             </div>
-
             {/* Desktop Filter Tabs */}
             <div className="hidden sm:flex bg-white shadow-sm rounded-lg p-1">
               {(["all", "active", "in-progress", "not-started"] as const).map((filter) => (
@@ -294,9 +292,8 @@ export default function ChallengesPage() {
                     30-Day Fitness Challenge
                   </h3>
                   <p className="mb-4 text-emerald-100 text-sm sm:text-base">
-                    Complete a daily mix of activities including walking, strength training,
-                    and flexibility exercises for 30 days. Track your progress and see remarkable
-                    improvements in your fitness level!
+                    Complete a daily mix of activities including walking, strength training, and flexibility exercises
+                    for 30 days. Track your progress and see remarkable improvements in your fitness level!
                   </p>
                   <div className="flex flex-wrap gap-2 mb-4">
                     <span className="bg-white bg-opacity-20 rounded-full text-xs px-3 py-1">
@@ -483,7 +480,7 @@ export default function ChallengesPage() {
                             </div>
                           </div>
 
-                          {/* If the challenge is of Exercise category, show recording section */}
+                          {/* For Exercise challenges, pass the exercise details (based on subType) directly */}
                           {challenge.category === ChallengeCategory.Exercise && (
                             <motion.div
                               initial={{ opacity: 0, y: 20 }}
@@ -495,7 +492,12 @@ export default function ChallengesPage() {
                                 <span className="material-icons mr-2 text-emerald-600">videocam</span>
                                 Record Your Exercise
                               </h5>
-                              <LiveDetection />
+                              {/* Look up the exercise details from the EXERCISES array by matching challenge.subType */}
+                              <LiveDetection
+                                exercise={
+                                  EXERCISES.find((ex) => ex.id === challenge.subType) || EXERCISES[0]
+                                }
+                              />
                               <button
                                 onClick={() => handleSubmitVideo(challenge.id)}
                                 className="mt-4 w-full sm:w-auto px-4 py-2 rounded-lg font-medium text-white transition-colors bg-blue-600 hover:bg-blue-700"
@@ -510,12 +512,14 @@ export default function ChallengesPage() {
                               <motion.button
                                 whileHover={{ scale: 1.05 }}
                                 whileTap={{ scale: 0.95 }}
-                                className={`${buttonClass} text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center shadow-sm text-sm sm:text-base`}
+                                className={`${categoryButtonMapping[challenge.category]} text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center shadow-sm text-sm sm:text-base`}
                               >
                                 <span className="material-icons mr-1 text-sm">
                                   {challenge.category === ChallengeCategory.Nutrition ? "local_drink" : "add_circle"}
                                 </span>
-                                {challenge.category === ChallengeCategory.Nutrition ? "Join & Log Water" : "Join Challenge"}
+                                {challenge.category === ChallengeCategory.Nutrition
+                                  ? "Join & Log Water"
+                                  : "Join Challenge"}
                               </motion.button>
                             )}
 
@@ -525,12 +529,14 @@ export default function ChallengesPage() {
                                 <motion.button
                                   whileHover={{ scale: 1.05 }}
                                   whileTap={{ scale: 0.95 }}
-                                  className={`${buttonClass} text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center shadow-sm text-sm sm:text-base`}
+                                  className={`${categoryButtonMapping[challenge.category]} text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center shadow-sm text-sm sm:text-base`}
                                 >
                                   <span className="material-icons mr-1 text-sm">
                                     {challenge.category === ChallengeCategory.Nutrition ? "edit" : "check_circle"}
                                   </span>
-                                  {challenge.category === ChallengeCategory.Nutrition ? "Log Nutrition" : "Mark as Complete"}
+                                  {challenge.category === ChallengeCategory.Nutrition
+                                    ? "Log Nutrition"
+                                    : "Mark as Complete"}
                                 </motion.button>
                               )}
 
