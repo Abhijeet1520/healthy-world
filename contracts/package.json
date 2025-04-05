@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@ensdomains/ens-contracts": "1.0.1",
     "@openzeppelin/contracts": "^4.1.0",
     "hardhat": "^2.22.19"
   },
