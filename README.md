@@ -1,5 +1,11 @@
 # HealthyWorld - Health & Wellness Tracker Mini App
 
+## Live Demo
+
+Explore the HealthyWorld mini app in action by visiting our live demo:
+
+[HealthyWorld Live Demo](https://healthy-world.vercel.app/)
+
 HealthyWorld is a comprehensive health and wellness tracker built as a mini app for the World App platform. It enables users to track their health metrics, set wellness goals, participate in challenges, and earn rewards.
 
 ## Features

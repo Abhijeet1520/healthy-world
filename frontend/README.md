@@ -57,8 +57,8 @@ HealthyWorld is a comprehensive health and wellness tracker built as a mini app 
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/healthyworld.git
-   cd healthyworld
+   git clone https://github.com/Abhijeet1520/healthy-world.git
+   cd healthy-world
    ```
 
 2. Install dependencies:
