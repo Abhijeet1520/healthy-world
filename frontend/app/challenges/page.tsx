@@ -1,72 +1,125 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useChallenges } from '@/components/contracts/ChallengeProvider'
-import LiveDetection from '@/components/LiveDetection'
-import Image from 'next/image'
+import { useState, useEffect, useRef } from "react"
+import Link from "next/link"
+import Image from "next/image"
+import { motion, AnimatePresence } from "framer-motion"
+import { useSwipeable } from "react-swipeable"
+import LiveDetection from "@/components/LiveDetection"
 
 // Enums for challenge status and categories
-enum ChallengeStatus { Active, Judging, Completed, Cancelled }
-enum ChallengeCategory { Common, Exercise, Nutrition }
+enum ChallengeStatus {
+  Active = 0,
+  Judging = 1,
+  Completed = 2,
+  Cancelled = 3,
+}
+enum ChallengeCategory {
+  Common = 0,
+  Exercise = 1,
+  Nutrition = 2,
+}
 
 // Challenge type
 interface Challenge {
-  id: number;
-  name: string;
-  description: string;
-  category: ChallengeCategory;
-  subType: string;
-  startDate: Date;
-  endDate: Date;
-  minStake: number;
-  poolSize: number;
-  status: ChallengeStatus;
-  participantCount: number;
-  completedCount: number;
-  isJoined: boolean;
-  myStake: number;
-  myCompletion: boolean;
+  id: number
+  name: string
+  description: string
+  category: ChallengeCategory
+  subType: string
+  startDate: Date
+  endDate: Date
+  minStake: number
+  poolSize: number
+  status: ChallengeStatus
+  participantCount: number
+  completedCount: number
+  isJoined: boolean
+  myStake: number
+  myCompletion: boolean
+  daysLeft?: number
+  progress?: number
 }
 
 // Mapping for icons based on category
 const categoryIconMapping: Record<ChallengeCategory, string> = {
-  [ChallengeCategory.Common]: 'emoji_events',
-  [ChallengeCategory.Exercise]: 'fitness_center',
-  [ChallengeCategory.Nutrition]: 'local_dining',
+  [ChallengeCategory.Common]: "emoji_events",
+  [ChallengeCategory.Exercise]: "fitness_center",
+  [ChallengeCategory.Nutrition]: "local_dining",
+}
+
+// Mapping for subType icons
+const subTypeIconMapping: Record<string, string> = {
+  "bicep-curls": "fitness_center",
+  water: "water_drop",
+  mindfulness: "self_improvement",
+  strength: "fitness_center",
 }
 
 // Mapping for background gradients based on category
 const categoryBgMapping: Record<ChallengeCategory, string> = {
-  [ChallengeCategory.Common]: 'from-gray-50 to-gray-100',
-  [ChallengeCategory.Exercise]: 'from-indigo-50 to-indigo-100',
-  [ChallengeCategory.Nutrition]: 'from-red-50 to-red-100',
+  [ChallengeCategory.Common]: "from-purple-50 to-purple-100",
+  [ChallengeCategory.Exercise]: "from-blue-50 to-blue-100",
+  [ChallengeCategory.Nutrition]: "from-emerald-50 to-emerald-100",
 }
 
 // Mapping for border colors based on category
 const categoryBorderMapping: Record<ChallengeCategory, string> = {
-  [ChallengeCategory.Common]: 'border-gray-200',
-  [ChallengeCategory.Exercise]: 'border-indigo-200',
-  [ChallengeCategory.Nutrition]: 'border-red-200',
+  [ChallengeCategory.Common]: "border-purple-200",
+  [ChallengeCategory.Exercise]: "border-blue-200",
+  [ChallengeCategory.Nutrition]: "border-emerald-200",
+}
+
+// Mapping for text colors based on category
+const categoryTextMapping: Record<ChallengeCategory, string> = {
+  [ChallengeCategory.Common]: "text-purple-600",
+  [ChallengeCategory.Exercise]: "text-blue-600",
+  [ChallengeCategory.Nutrition]: "text-emerald-600",
+}
+
+// Mapping for button colors based on category
+const categoryButtonMapping: Record<ChallengeCategory, string> = {
+  [ChallengeCategory.Common]: "bg-purple-600 hover:bg-purple-700",
+  [ChallengeCategory.Exercise]: "bg-blue-600 hover:bg-blue-700",
+  [ChallengeCategory.Nutrition]: "bg-emerald-600 hover:bg-emerald-700",
+}
+
+// Mapping for progress bar colors based on category
+const categoryProgressMapping: Record<ChallengeCategory, string> = {
+  [ChallengeCategory.Common]: "bg-purple-500",
+  [ChallengeCategory.Exercise]: "bg-blue-500",
+  [ChallengeCategory.Nutrition]: "bg-emerald-500",
+}
+
+// Helper: Get icon for a challenge – prefer subType icon if available
+const getIcon = (challenge: Challenge): string => {
+  return challenge.subType && subTypeIconMapping[challenge.subType]
+    ? subTypeIconMapping[challenge.subType]
+    : categoryIconMapping[challenge.category] || "emoji_events"
+}
+
+// Helper: Get category name as a string
+const getCategoryName = (category: ChallengeCategory): string => {
+  return ChallengeCategory[category]
 }
 
 export default function ChallengesPage() {
-  // Using mock data for demonstration (replace with context if needed)
+  // Using mock data for demonstration; replace with context if needed
   const [loading, setLoading] = useState(true)
   const [challenges, setChallenges] = useState<Challenge[]>([])
 
   useEffect(() => {
-    // Simulate API call to fetch challenges
     const timer = setTimeout(() => {
       setChallenges([
         {
           id: 0,
-          name: '10 Bicep Curls a Day',
-          description: 'Complete 10 bicep curls daily for 5 consecutive days. Boost your arm strength!',
+          name: "10 Bicep Curls a Day",
+          description:
+            "Complete 10 bicep curls daily for 5 consecutive days. Boost your arm strength!",
           category: ChallengeCategory.Exercise,
-          subType: 'bicep-curls',
-          startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
-          endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),    // 7 days from now
+          subType: "bicep-curls",
+          startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           minStake: 50,
           poolSize: 2500,
           status: ChallengeStatus.Active,
@@ -74,16 +127,19 @@ export default function ChallengesPage() {
           completedCount: 1,
           isJoined: true,
           myStake: 50,
-          myCompletion: false
+          myCompletion: false,
+          daysLeft: 7,
+          progress: 60,
         },
         {
           id: 1,
-          name: 'Hydration Hero',
-          description: 'Drink 8 cups of water daily for 7 consecutive days. Stay hydrated for optimal health!',
+          name: "Hydration Hero",
+          description:
+            "Drink 8 cups of water daily for 7 consecutive days. Stay hydrated for optimal health!",
           category: ChallengeCategory.Nutrition,
-          subType: 'water',
-          startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000), // 10 days ago
-          endDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),    // 4 days from now
+          subType: "water",
+          startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+          endDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
           minStake: 100,
           poolSize: 5000,
           status: ChallengeStatus.Active,
@@ -91,16 +147,19 @@ export default function ChallengesPage() {
           completedCount: 0,
           isJoined: true,
           myStake: 150,
-          myCompletion: true
+          myCompletion: true,
+          daysLeft: 4,
+          progress: 80,
         },
         {
           id: 2,
-          name: 'Meditation Master',
-          description: 'Complete 10 minutes of mindfulness daily for a week. Improve your mental well-being!',
+          name: "Meditation Master",
+          description:
+            "Complete 10 minutes of mindfulness daily for a week. Improve your mental well-being!",
           category: ChallengeCategory.Common,
-          subType: 'mindfulness',
-          startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
-          endDate: new Date(Date.now() + 9 * 24 * 60 * 60 * 1000),    // 9 days from now
+          subType: "mindfulness",
+          startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+          endDate: new Date(Date.now() + 9 * 24 * 60 * 60 * 1000),
           minStake: 75,
           poolSize: 3750,
           status: ChallengeStatus.Active,
@@ -108,16 +167,19 @@ export default function ChallengesPage() {
           completedCount: 0,
           isJoined: false,
           myStake: 0,
-          myCompletion: false
+          myCompletion: false,
+          daysLeft: 9,
+          progress: 25,
         },
         {
           id: 3,
-          name: 'Weekly Weight Training',
-          description: 'Complete 3 strength training sessions this week and track your results.',
+          name: "Weekly Weight Training",
+          description:
+            "Complete 3 strength training sessions this week and track your results.",
           category: ChallengeCategory.Exercise,
-          subType: 'strength',
-          startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-          endDate: new Date(Date.now() - 23 * 24 * 60 * 60 * 1000),   // 23 days ago (completed)
+          subType: "strength",
+          startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          endDate: new Date(Date.now() - 23 * 24 * 60 * 60 * 1000),
           minStake: 200,
           poolSize: 8000,
           status: ChallengeStatus.Completed,
@@ -125,26 +187,38 @@ export default function ChallengesPage() {
           completedCount: 42,
           isJoined: true,
           myStake: 200,
-          myCompletion: true
-        }
+          myCompletion: true,
+          daysLeft: 0,
+          progress: 100,
+        },
       ])
-
       setLoading(false)
     }, 1000)
 
     return () => clearTimeout(timer)
   }, [])
 
-  // Filter challenges by status
-  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'in-progress' | 'not-started'>('all')
-  const [selectedChallengeId, setSelectedChallengeId] = useState<number | null>(null)
+  // Filter state (and details toggle)
+  const [activeFilter, setActiveFilter] = useState<
+    "all" | "active" | "in-progress" | "not-started"
+  >("all")
+  const [selectedChallengeId, setSelectedChallengeId] = useState<number | null>(
+    null
+  )
 
-  // Filter challenges based on the selected filter
-  const filteredChallenges = challenges.filter(challenge => {
-    if (activeFilter === 'all') return true
-    if (activeFilter === 'active' && (challenge.status === ChallengeStatus.Active || challenge.status === ChallengeStatus.Judging)) return true
-    if (activeFilter === 'in-progress' && challenge.status === ChallengeStatus.Active) return challenge.isJoined
-    if (activeFilter === 'not-started' && challenge.status === ChallengeStatus.Active) return !challenge.isJoined
+  // Filter challenges based on selected filter
+  const filteredChallenges = challenges.filter((challenge) => {
+    if (activeFilter === "all") return true
+    if (
+      activeFilter === "active" &&
+      (challenge.status === ChallengeStatus.Active ||
+        challenge.status === ChallengeStatus.Judging)
+    )
+      return true
+    if (activeFilter === "in-progress" && challenge.status === ChallengeStatus.Active)
+      return challenge.isJoined
+    if (activeFilter === "not-started" && challenge.status === ChallengeStatus.Active)
+      return !challenge.isJoined
     return false
   })
 
@@ -159,42 +233,53 @@ export default function ChallengesPage() {
   }
 
   const toggleChallengeDetails = (challengeId: number) => {
-    setSelectedChallengeId(prev => (prev === challengeId ? null : challengeId))
+    setSelectedChallengeId((prev) => (prev === challengeId ? null : challengeId))
   }
 
   return (
-    <main className="min-h-screen p-4 md:p-6 bg-gradient-to-b from-emerald-50 to-teal-100">
-      <div className="max-w-5xl mx-auto">
-        {/* Navigation */}
-        <div className="flex flex-wrap items-center justify-between mb-8">
-          <div className="flex items-center mb-4 sm:mb-0">
-            <Link href="/dashboard" className="text-emerald-700 hover:underline font-medium mr-4 flex items-center">
-              <span className="material-icons mr-1">arrow_back</span>
-              Dashboard
-            </Link>
-            <h1 className="text-2xl font-bold text-emerald-800">Health Challenges</h1>
-          </div>
-          <div className="bg-white shadow-sm rounded-lg p-1 flex">
-            {(['all', 'active', 'in-progress', 'not-started'] as const).map(filter => (
-              <button
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeFilter === filter
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
+    <main className="min-h-screen pb-20" >
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-10 bg-gradient-to-b from-emerald-50 to-emerald-50/90 backdrop-blur-sm pt-4 pb-2 -mx-4 px-4 sm:static sm:bg-transparent sm:backdrop-blur-none sm:pt-0 sm:pb-0 sm:mx-0 sm:px-0">
+          <div className="flex flex-wrap items-center justify-between mb-4 sm:mb-8">
+            <div className="flex items-center mb-3 sm:mb-0">
+              <Link
+                href="/dashboard"
+                className="text-emerald-700 hover:underline font-medium mr-4 flex items-center"
               >
-                {filter.charAt(0).toUpperCase() + filter.slice(1)}
-              </button>
-            ))}
+                <span className="material-icons mr-1">arrow_back</span>
+                <span className="hidden sm:inline">Dashboard</span>
+              </Link>
+              <h1 className="text-xl sm:text-2xl font-bold text-emerald-800">
+                Health Challenges
+              </h1>
+            </div>
+
+            {/* Desktop Filter Tabs */}
+            <div className="hidden sm:flex bg-white shadow-sm rounded-lg p-1">
+              {(["all", "active", "in-progress", "not-started"] as const).map(
+                (filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setActiveFilter(filter)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      activeFilter === filter
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </button>
+                )
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Featured Challenge (Static Example) */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-emerald-800 flex items-center">
+        {/* Featured Challenge */}
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-bold text-emerald-800 flex items-center">
               <span className="material-icons mr-2 text-emerald-600">stars</span>
               Featured Challenge
             </h2>
@@ -202,34 +287,46 @@ export default function ChallengesPage() {
               Limited Time
             </span>
           </div>
-          <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg p-6 text-white relative overflow-hidden">
+          <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg p-4 sm:p-6 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 opacity-10">
               <span className="material-icons text-9xl">directions_run</span>
             </div>
             <div className="relative z-10">
               <div className="flex flex-wrap items-start">
                 <div className="w-full md:w-3/4 mb-4 md:mb-0 md:pr-6">
-                  <h3 className="text-2xl font-bold mb-2">30-Day Fitness Challenge</h3>
-                  <p className="mb-4 text-emerald-100">
-                    Complete a daily mix of activities including walking, strength training, and flexibility exercises for 30 days. Track your progress and see remarkable improvements in your fitness level!
+                  <h3 className="text-xl sm:text-2xl font-bold mb-2">
+                    30-Day Fitness Challenge
+                  </h3>
+                  <p className="mb-4 text-emerald-100 text-sm sm:text-base">
+                    Complete a daily mix of activities including walking, strength training,
+                    and flexibility exercises for 30 days. Track your progress and see remarkable
+                    improvements in your fitness level!
                   </p>
-                  <div className="flex flex-wrap gap-3 mb-4">
-                    <span className="bg-white bg-opacity-20 rounded-full text-xs px-3 py-1">Fitness</span>
-                    <span className="bg-white bg-opacity-20 rounded-full text-xs px-3 py-1">All Levels</span>
-                    <span className="bg-white bg-opacity-20 rounded-full text-xs px-3 py-1">30 Days</span>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <span className="bg-white bg-opacity-20 rounded-full text-xs px-3 py-1">
+                      Fitness
+                    </span>
+                    <span className="bg-white bg-opacity-20 rounded-full text-xs px-3 py-1">
+                      All Levels
+                    </span>
+                    <span className="bg-white bg-opacity-20 rounded-full text-xs px-3 py-1">
+                      30 Days
+                    </span>
                   </div>
-                  <button className="bg-white text-emerald-700 py-2 px-6 rounded-lg font-medium hover:shadow-md transition-all inline-flex items-center">
+                  <button className="bg-white text-emerald-700 py-2 px-4 sm:px-6 rounded-lg font-medium hover:shadow-md transition-all inline-flex items-center text-sm sm:text-base">
                     Join Challenge
                     <span className="material-icons ml-1 text-sm">arrow_forward</span>
                   </button>
                 </div>
                 <div className="w-full md:w-1/4 flex justify-center md:justify-end">
                   <div className="text-center">
-                    <div className="w-24 h-24 bg-white bg-opacity-20 rounded-full flex items-center justify-center mb-2">
-                      <span className="material-icons text-4xl">emoji_events</span>
+                    <div className="w-16 h-16 sm:w-24 sm:h-24 bg-white bg-opacity-20 rounded-full flex items-center justify-center mb-2">
+                      <span className="material-icons text-3xl sm:text-4xl">emoji_events</span>
                     </div>
-                    <div className="text-lg font-bold">500 Points</div>
-                    <div className="text-sm text-emerald-100">Premium Badge</div>
+                    <div className="text-base sm:text-lg font-bold">500 Points</div>
+                    <div className="text-xs sm:text-sm text-emerald-100">
+                      Premium Badge
+                    </div>
                   </div>
                 </div>
               </div>
@@ -244,86 +341,270 @@ export default function ChallengesPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredChallenges.map(challenge => {
-              // Get icon, background and border based on challenge category
-              const icon = categoryIconMapping[challenge.category] || 'emoji_events'
-              const bgClass = categoryBgMapping[challenge.category] || 'from-gray-50 to-gray-100'
-              const borderClass = categoryBorderMapping[challenge.category] || 'border-gray-200'
+            {filteredChallenges.map((challenge) => {
+              const icon = getIcon(challenge)
+              const bgClass = categoryBgMapping[challenge.category] || "from-gray-50 to-gray-100"
+              const borderClass = categoryBorderMapping[challenge.category] || "border-gray-200"
+              const textClass = categoryTextMapping[challenge.category] || "text-gray-600"
+              const buttonClass = categoryButtonMapping[challenge.category] || "bg-gray-600 hover:bg-gray-700"
+              const progressClass = categoryProgressMapping[challenge.category] || "bg-gray-500"
+
               return (
                 <div key={challenge.id}>
-                  <div
+                  <motion.div
                     onClick={() => toggleChallengeDetails(challenge.id)}
-                    className={`bg-gradient-to-br ${bgClass} ${borderClass} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer p-5 flex justify-between items-center`}
+                    onTouchStart={(e) => {
+                      const touch = e.touches[0]
+                      const startY = touch.clientY
+
+                      const handleTouchMove = (e: TouchEvent) => {
+                        const currentY = e.touches[0].clientY
+                        const diff = currentY - startY
+                        if (diff < -50 && selectedChallengeId !== challenge.id) {
+                          setSelectedChallengeId(challenge.id)
+                          document.removeEventListener("touchmove", handleTouchMove)
+                        }
+                      }
+
+                      document.addEventListener("touchmove", handleTouchMove, { passive: true })
+
+                      const handleTouchEnd = () => {
+                        document.removeEventListener("touchmove", handleTouchMove)
+                        document.removeEventListener("touchend", handleTouchEnd)
+                      }
+
+                      document.addEventListener("touchend", handleTouchEnd, { once: true })
+                    }}
+                    className={`bg-gradient-to-br ${bgClass} ${borderClass} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer p-4 sm:p-5`}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 17 }}
                   >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center">
-                        <span className="material-icons text-2xl">{icon}</span>
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-gray-900 text-lg">{challenge.name}</h3>
-                        <p className="text-sm text-gray-600">{challenge.description}</p>
-                      </div>
-                    </div>
-                    <div>
-                      {challenge.status === ChallengeStatus.Active && challenge.isJoined && (
-                        <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-full font-medium">
-                          In Progress
-                        </span>
-                      )}
-                      {challenge.status === ChallengeStatus.Active && !challenge.isJoined && (
-                        <span className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded-full font-medium">
-                          Not Started
-                        </span>
-                      )}
-                      {challenge.status === ChallengeStatus.Completed && (
-                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
-                          Completed
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {selectedChallengeId === challenge.id && (
-                    <div className="mt-4 p-6 bg-white rounded-xl shadow-lg border border-gray-200">
-                      <h4 className="text-2xl font-bold text-gray-900 mb-4">{challenge.name} Details</h4>
-                      <p className="mb-4 text-gray-700">{challenge.description}</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        <div className="space-y-3">
-                          <p className="text-gray-500">
-                            <span className="font-semibold">Category:</span> {ChallengeCategory[challenge.category]}
-                          </p>
-                          <p className="text-gray-500">
-                            <span className="font-semibold">Min Stake:</span> {challenge.minStake}
-                          </p>
-                          <p className="text-gray-500">
-                            <span className="font-semibold">Pool Size:</span> {challenge.poolSize}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3 sm:space-x-4">
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white flex items-center justify-center ${textClass}`}>
+                          <span className="material-icons text-xl sm:text-2xl">{icon}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-gray-900 text-base sm:text-lg truncate">
+                            {challenge.name}
+                          </h3>
+                          <p className="text-xs sm:text-sm text-gray-600 line-clamp-1 sm:line-clamp-2">
+                            {challenge.description}
                           </p>
                         </div>
-                        <div className="space-y-3">
-                          <p className="text-gray-500">
-                            <span className="font-semibold">Days Left:</span> {challenge.daysLeft}
+                      </div>
+                      <div className="flex items-center ml-2">
+                        {challenge.status === ChallengeStatus.Active && challenge.isJoined && (
+                          <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap">
+                            In Progress
+                          </span>
+                        )}
+                        {challenge.status === ChallengeStatus.Active && !challenge.isJoined && (
+                          <span className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap">
+                            Not Started
+                          </span>
+                        )}
+                        {challenge.status === ChallengeStatus.Completed && (
+                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap">
+                            Completed
+                          </span>
+                        )}
+                        <span className="material-icons text-gray-400 ml-1 sm:ml-2">
+                          {selectedChallengeId === challenge.id ? "expand_less" : "expand_more"}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Mobile mini progress bar */}
+                    <div className="mt-3 sm:hidden">
+                      <div className="w-full bg-white bg-opacity-50 rounded-full h-1.5">
+                        <div
+                          className={`${progressClass} h-1.5 rounded-full`}
+                          style={{ width: `${challenge.progress || 0}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  <AnimatePresence>
+                    {selectedChallengeId === challenge.id && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-4 p-4 sm:p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                          <motion.div
+                            className="flex justify-center sm:hidden mb-3"
+                            initial={{ opacity: 0.5 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ repeat: 2, duration: 1 }}
+                          >
+                            <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
+                            <div className="absolute text-xs text-gray-400 mt-3">Swipe down to close</div>
+                          </motion.div>
+                          <h4 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 flex items-center">
+                            <span className={`material-icons mr-2 ${textClass}`}>{icon}</span>
+                            {challenge.name}
+                          </h4>
+                          <p className="mb-4 sm:mb-6 text-gray-700 text-sm sm:text-base">
+                            {challenge.description}
                           </p>
-                          <div>
-                            <p className="text-gray-500 text-sm mb-1">Time Progress</p>
-                            <div className="w-full bg-gray-200 rounded-full h-3">
-                              <div className="bg-emerald-500 h-3 rounded-full" style={{ width: `${calculateProgress(challenge.startDate, challenge.endDate)}%` }}></div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+                            <div className="p-3 rounded-lg bg-opacity-10" style={{ background: `linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))` }}>
+                              <p className="text-xs text-gray-500 mb-1">Category</p>
+                              <p className={`font-medium ${textClass} text-sm sm:text-base flex items-center`}>
+                                <span className="material-icons mr-1 text-sm">category</span>
+                                {getCategoryName(challenge.category)}
+                              </p>
+                            </div>
+                            <div className="p-3 rounded-lg bg-opacity-10" style={{ background: `linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))` }}>
+                              <p className="text-xs text-gray-500 mb-1">Min Stake</p>
+                              <p className={`font-medium ${textClass} text-sm sm:text-base flex items-center`}>
+                                <span className="material-icons mr-1 text-sm">toll</span>
+                                {challenge.minStake} Points
+                              </p>
+                            </div>
+                            <div className="p-3 rounded-lg bg-opacity-10" style={{ background: `linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))` }}>
+                              <p className="text-xs text-gray-500 mb-1">Pool Size</p>
+                              <p className={`font-medium ${textClass} text-sm sm:text-base flex items-center`}>
+                                <span className="material-icons mr-1 text-sm">savings</span>
+                                {challenge.poolSize} Points
+                              </p>
+                            </div>
+                            <div className="p-3 rounded-lg bg-opacity-10" style={{ background: `linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))` }}>
+                              <p className="text-xs text-gray-500 mb-1">Days Left</p>
+                              <p className={`font-medium ${textClass} text-sm sm:text-base flex items-center`}>
+                                <span className="material-icons mr-1 text-sm">schedule</span>
+                                {challenge.daysLeft !== undefined ? challenge.daysLeft : 0}
+                              </p>
                             </div>
                           </div>
-                          <div>
-                            <p className="text-gray-500 text-sm mb-1">Completion</p>
-                            <div className="w-full bg-gray-200 rounded-full h-3">
-                              <div className="bg-blue-500 h-3 rounded-full" style={{ width: `${challenge.progress}%` }}></div>
+
+                          <div className="space-y-4 mb-6">
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <p className="text-xs sm:text-sm text-gray-500">Time Progress</p>
+                                <span className="text-xs sm:text-sm font-medium text-gray-700">
+                                  {calculateProgress(challenge.startDate, challenge.endDate)}%
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3 overflow-hidden">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${calculateProgress(challenge.startDate, challenge.endDate)}%` }}
+                                  transition={{ duration: 1, ease: "easeOut" }}
+                                  className={`${progressClass} h-2 sm:h-3 rounded-full`}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <p className="text-xs sm:text-sm text-gray-500">Your Completion</p>
+                                <span className="text-xs sm:text-sm font-medium text-gray-700">
+                                  {challenge.progress || 0}%
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3 overflow-hidden">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${challenge.progress || 0}%` }}
+                                  transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
+                                  className={`${progressClass} h-2 sm:h-3 rounded-full`}
+                                />
+                              </div>
                             </div>
                           </div>
+
+                          <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+                            <div className="flex justify-between items-center mb-2">
+                              <h5 className="font-semibold text-gray-800 text-sm sm:text-base">Participants</h5>
+                              <span className="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full">
+                                {challenge.participantCount} Total
+                              </span>
+                            </div>
+                            <div className="flex items-center">
+                              <div className="flex -space-x-2 mr-3">
+                                {[...Array(5)].map((_, i) => (
+                                  <div
+                                    key={i}
+                                    className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-300 border-2 border-white flex items-center justify-center text-xs text-gray-600"
+                                  >
+                                    {String.fromCharCode(65 + i)}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="text-xs sm:text-sm text-gray-600">
+                                {challenge.completedCount} completed •{" "}
+                                {challenge.participantCount - challenge.completedCount} in progress
+                              </div>
+                            </div>
+                          </div>
+
+                          {challenge.subType === "strength" && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.3 }}
+                              className="mt-4 border-t pt-4 border-gray-100"
+                            >
+                              <h5 className="text-xl font-semibold mb-2 text-gray-800 flex items-center">
+                                <span className="material-icons mr-2 text-emerald-600">videocam</span>
+                                Record Your Exercise
+                              </h5>
+                              <LiveDetection />
+                            </motion.div>
+                          )}
+
+                          <div className="mt-6 flex flex-wrap gap-3 justify-end">
+                            {challenge.status === ChallengeStatus.Active && !challenge.isJoined && (
+                              <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                className={`${buttonClass} text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center shadow-sm text-sm sm:text-base`}
+                              >
+                                <span className="material-icons mr-1 text-sm">add_circle</span>
+                                Join Challenge
+                              </motion.button>
+                            )}
+
+                            {challenge.status === ChallengeStatus.Active &&
+                              challenge.isJoined &&
+                              !challenge.myCompletion && (
+                                <motion.button
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  className={`${buttonClass} text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center shadow-sm text-sm sm:text-base`}
+                                >
+                                  <span className="material-icons mr-1 text-sm">check_circle</span>
+                                  Mark as Complete
+                                </motion.button>
+                              )}
+
+                            {challenge.status === ChallengeStatus.Active &&
+                              challenge.isJoined &&
+                              challenge.myCompletion && (
+                                <button className="bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-medium flex items-center text-sm sm:text-base">
+                                  <span className="material-icons mr-1 text-sm text-emerald-500">check_circle</span>
+                                  Completed
+                                </button>
+                              )}
+
+                            {challenge.status === ChallengeStatus.Completed && challenge.myCompletion && (
+                              <button className="bg-amber-500 text-white py-2 px-4 rounded-lg font-medium hover:bg-amber-600 transition-colors flex items-center shadow-sm text-sm sm:text-base">
+                                <span className="material-icons mr-1 text-sm">emoji_events</span>
+                                Claim Rewards
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      {challenge.subType === 'strength' && (
-                        <div className="mt-6">
-                          <h5 className="text-xl font-semibold mb-3">Record Your Exercise</h5>
-                          <LiveDetection />
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )
             })}
@@ -331,20 +612,44 @@ export default function ChallengesPage() {
         )}
 
         {!loading && filteredChallenges.length === 0 && (
-          <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+          <div className="bg-white rounded-xl shadow-sm p-6 sm:p-8 text-center">
             <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <span className="material-icons text-gray-400 text-2xl">search_off</span>
             </div>
             <h3 className="text-lg font-bold text-gray-700 mb-2">No challenges found</h3>
-            <p className="text-gray-500 mb-4">There are no challenges matching your selected filter.</p>
+            <p className="text-gray-500 mb-4 text-sm sm:text-base">
+              There are no challenges matching your selected filter.
+            </p>
             <button
-              onClick={() => setActiveFilter('all')}
-              className="py-2 px-4 bg-emerald-100 text-emerald-700 rounded-lg font-medium hover:bg-emerald-200 transition-colors"
+              onClick={() => setActiveFilter("all")}
+              className="py-2 px-4 bg-emerald-100 text-emerald-700 rounded-lg font-medium hover:bg-emerald-200 transition-colors text-sm sm:text-base"
             >
               View All Challenges
             </button>
           </div>
         )}
+
+        {/* Mobile Bottom Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 py-2 px-4 sm:hidden">
+          <div className="flex justify-around">
+            <Link href="/dashboard" className="flex flex-col items-center text-gray-600">
+              <span className="material-icons">home</span>
+              <span className="text-xs mt-1">Home</span>
+            </Link>
+            <Link href="#" className="flex flex-col items-center text-emerald-600">
+              <span className="material-icons">emoji_events</span>
+              <span className="text-xs mt-1">Challenges</span>
+            </Link>
+            <Link href="#" className="flex flex-col items-center text-gray-600">
+              <span className="material-icons">account_circle</span>
+              <span className="text-xs mt-1">Profile</span>
+            </Link>
+            <Link href="#" className="flex flex-col items-center text-gray-600">
+              <span className="material-icons">settings</span>
+              <span className="text-xs mt-1">Settings</span>
+            </Link>
+          </div>
+        </div>
       </div>
     </main>
   )
