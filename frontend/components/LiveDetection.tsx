@@ -5,7 +5,7 @@ import { Play, Square } from "lucide-react";
 import { PoseLandmarker, DrawingUtils, FilesetResolver } from "@mediapipe/tasks-vision";
 
 // -----------------------------------------------------------------------
-// Type Definitions and Exercises (if not imported from elsewhere)
+// Type Definitions and Exercises
 // -----------------------------------------------------------------------
 export type Exercise = {
   id: string;
@@ -186,10 +186,14 @@ interface LiveDetectionProps {
 export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   // Mode: live or upload
   const [mode, setMode] = useState<"live" | "upload">("live");
+  const [recording, setRecording] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detectionRef = useRef<ExerciseDetectionService | null>(null);
   const animationFrameRef = useRef<number>();
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
 
   const [isDetecting, setIsDetecting] = useState(false);
   const [hasPermissions, setHasPermissions] = useState<boolean | null>(null);
@@ -197,9 +201,10 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
   const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
 
-  // Find the exercise from subType (fallback to first if not found)
+  // Automatically select exercise based on subType
   const exercise = EXERCISES.find((ex) => ex.id === exerciseSubType) || EXERCISES[0];
 
+  // Initialize detection service and check camera permission for live mode
   useEffect(() => {
     detectionRef.current = new ExerciseDetectionService();
     if (mode === "live") {
@@ -222,6 +227,7 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     };
   }, [mode]);
 
+  // Live mode: start detection and recording when active
   useEffect(() => {
     if (mode === "live") {
       if (!isDetecting) {
@@ -268,32 +274,134 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setUploadedVideo(file);
-      setVideoPreviewUrl(URL.createObjectURL(file));
+      setRecordedVideoUrl(URL.createObjectURL(file));
     }
   };
 
-  const handleUploadSubmit = () => {
-    if (uploadedVideo) {
-      alert(`Uploaded video "${uploadedVideo.name}" for ${exercise.name} submitted!`);
-      setUploadedVideo(null);
-      setVideoPreviewUrl(null);
+  // API endpoint from env variable (with fallback)
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  // Submit live recorded video
+  const handleLiveSubmit = async () => {
+    if (recordedVideoUrl && recordedChunks.length > 0) {
+      const blob = new Blob(recordedChunks, { type: "video/webm" });
+      const formData = new FormData();
+      formData.append("file", blob, "recorded_video.webm");
+      formData.append("exercise_id", exercise.id);
+      formData.append("highlight_output", "false");
+
+      try {
+        const response = await fetch(`${apiUrl}/analyze-video`, {
+          method: "POST",
+          body: formData,
+        });
+        if (response.ok) {
+          const data = await response.json();
+          alert(`Live recorded video for ${exercise.name} submitted! Reps: ${data.total_completions}`);
+          setRecordedVideoUrl(null);
+          setRecordedChunks([]);
+        } else {
+          alert("Failed to submit live video.");
+        }
+      } catch (error) {
+        console.error("Error submitting live video:", error);
+        alert("Error submitting live video.");
+      }
     }
+  };
+
+  // Submit uploaded video
+  const handleUploadSubmit = async () => {
+    if (uploadedVideo) {
+      const formData = new FormData();
+      formData.append("file", uploadedVideo, uploadedVideo.name);
+      formData.append("exercise_id", exercise.id);
+      formData.append("highlight_output", "false");
+
+      try {
+        const response = await fetch(`${apiUrl}/analyze-video`, {
+          method: "POST",
+          body: formData,
+        });
+        if (response.ok) {
+          const data = await response.json();
+          alert(`Uploaded video for ${exercise.name} submitted! Reps: ${data.total_completions}`);
+          setRecordedVideoUrl(null);
+          setUploadedVideo(null);
+        } else {
+          alert("Failed to submit uploaded video.");
+        }
+      } catch (error) {
+        console.error("Error submitting uploaded video:", error);
+        alert("Error submitting uploaded video.");
+      }
+    }
+  };
+
+  // Setup MediaRecorder when live recording starts
+  useEffect(() => {
+    if (mode === "live" && recording && videoRef.current?.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      try {
+        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: "video/webm" });
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            setRecordedChunks((prev) => [...prev, event.data]);
+          }
+        };
+        mediaRecorderRef.current.start();
+      } catch (error) {
+        console.error("MediaRecorder error:", error);
+      }
+    }
+  }, [recording, mode]);
+
+  // Handlers for live recording start/stop
+  const handleStartRecording = () => {
+    setIsDetecting(true);
+    setRecording(true);
+    setRepCount(0);
+    setRecordedChunks([]);
+    setRecordedVideoUrl(null);
+  };
+
+  const handleStopRecording = () => {
+    setIsDetecting(false);
+    setRecording(false);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    // Create preview URL after a short delay
+    setTimeout(() => {
+      if (recordedChunks.length > 0) {
+        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        setRecordedVideoUrl(url);
+      }
+    }, 500);
   };
 
   return (
     <div className="bg-gray-900 text-white p-6 rounded-lg shadow-lg">
-      {/* Mode toggle */}
+      {/* Mode Toggle */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Exercise Trainer</h2>
         <div className="flex space-x-4">
           <button
-            onClick={() => setMode("live")}
+            onClick={() => {
+              setMode("live");
+              setRecordedVideoUrl(null);
+            }}
             className={`px-4 py-2 rounded ${mode === "live" ? "bg-green-600" : "bg-gray-700"}`}
           >
             Live
           </button>
           <button
-            onClick={() => setMode("upload")}
+            onClick={() => {
+              setMode("upload");
+              setIsDetecting(false);
+              setRecordedVideoUrl(null);
+            }}
             className={`px-4 py-2 rounded ${mode === "upload" ? "bg-green-600" : "bg-gray-700"}`}
           >
             Upload
@@ -308,14 +416,14 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
 
       {mode === "live" ? (
         <div className="mt-6 flex flex-col md:flex-row gap-8">
-          {/* Video & Canvas */}
+          {/* Live Video & Canvas */}
           <div className="relative w-full md:w-1/2 aspect-video bg-black rounded-lg overflow-hidden">
             {hasPermissions === false && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                 <p>Camera permission required</p>
               </div>
             )}
-            {hasPermissions !== false && exercise && (
+            {hasPermissions !== false && (
               <>
                 <video
                   ref={videoRef}
@@ -332,28 +440,46 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
               </>
             )}
           </div>
-          {/* Stats */}
+
+          {/* Stats & Controls */}
           <div className="w-full md:w-1/2 bg-gray-800 p-6 rounded-lg border border-gray-700">
             <h3 className="text-xl font-semibold mb-4">Exercise Stats</h3>
-            <div className="mb-4">
-              <p className="text-gray-400">Exercise</p>
-              <p className="text-white text-xl">{exercise.name}</p>
-            </div>
             <div className="mb-4">
               <p className="text-gray-400">Repetitions</p>
               <p className="text-4xl font-bold text-blue-400">{repCount}</p>
             </div>
-            <h4 className="text-lg font-semibold mt-6 mb-2">Tips</h4>
-            <ul className="list-disc list-inside text-gray-300 space-y-1">
-              <li>Stand in a well-lit area</li>
-              <li>Ensure your full body is visible</li>
-              <li>Perform the exercise at a controlled pace</li>
-              <li>Maintain proper form throughout</li>
-            </ul>
+            <div className="flex gap-4">
+              {!recording && !recordedVideoUrl && (
+                <button
+                  onClick={handleStartRecording}
+                  className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white flex items-center"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Start Recording
+                </button>
+              )}
+              {recording && (
+                <button
+                  onClick={handleStopRecording}
+                  className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white flex items-center"
+                >
+                  <Square className="h-4 w-4 mr-2" />
+                  End Recording
+                </button>
+              )}
+              {recordedVideoUrl && (
+                <button
+                  onClick={handleLiveSubmit}
+                  className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white flex items-center"
+                >
+                  Submit Video
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ) : (
-        // Upload mode
+        // Upload Mode
         <div className="mt-6">
           <div className="mb-4">
             <label className="block text-gray-300 mb-2" htmlFor="videoUpload">
@@ -367,14 +493,14 @@ export default function LiveDetection({ exerciseSubType }: LiveDetectionProps) {
               className="w-full text-gray-700"
             />
           </div>
-          {videoPreviewUrl && (
+          {recordedVideoUrl && (
             <div className="mb-4">
-              <video src={videoPreviewUrl} controls className="w-full rounded-lg" />
+              <video src={recordedVideoUrl} controls className="w-full rounded-lg" />
             </div>
           )}
           <button
             onClick={handleUploadSubmit}
-            disabled={!uploadedVideo}
+            disabled={!recordedVideoUrl}
             className="w-full sm:w-auto px-4 py-2 rounded-lg font-medium text-white transition-colors bg-blue-600 hover:bg-blue-700"
           >
             Submit Video
