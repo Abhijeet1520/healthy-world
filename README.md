@@ -111,6 +111,12 @@ View docs: [Docs](https://docs.world.org/)
 
 ## ENS Integration and Registrar
 
+### Blockchain Contract
+
+You can view the HealthyWorld smart contract on the World Chain Mainnet for details about the ENS Registrar and other contract interactions:
+
+[View HealthyWorld ENS transactions on WorldChain Mainnet Explorer](https://worldchain-mainnet.explorer.alchemy.com/address/0x8A9679F84A26532a7136c7f0Ab7721e243E4dd7A?tab=txs)
+
 HealthyWorld also supports an ENS-based username registration system on the **World Coin mainnet chain**. This is made possible through a custom registrar contract, **HealthyWorldRegistrarImplementation**, which inherits from the official ENS `BaseRegistrarImplementation`. Here’s how it works:
 
 1. **Username Registration**
