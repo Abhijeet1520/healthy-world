@@ -10,8 +10,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@ensdomains/ens-contracts": "1.0.1",
+    "@ensdomains/ens-contracts": "^1.0.1",
     "@openzeppelin/contracts": "^4.1.0",
+    "dotenv": "^16.4.7",
     "hardhat": "^2.22.19"
   },
   "devDependencies": {
