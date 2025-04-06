@@ -163,7 +163,7 @@ export default function Dashboard() {
             <p className="font-medium text-blue-500">Rewards</p>
           </Link>
           <Link
-            href="/profile"
+            href="/track"
             className="bg-white p-4 rounded-lg shadow text-center hover:shadow-md transition"
           >
             <span className="material-icons text-emerald-500 text-3xl mb-2">person</span>

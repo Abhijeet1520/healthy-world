@@ -285,7 +285,7 @@ export function MinikitProvider({ children }: { children: ReactNode }) {
           payload: finalPayload,
           action: actionId,
           signal: walletAddress,
-          nonce: storedNonce // Include the nonce we used for SIWE
+          nonce: storedNonce 
         }),
       });
       
