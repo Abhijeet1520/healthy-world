@@ -5,6 +5,14 @@ import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import LiveDetection from "@/components/LiveDetection"
 import { EXERCISES, Exercise } from "@/components/LiveDetection"
+import { MiniKit } from "@worldcoin/minikit-js"
+import { ethers } from "ethers"
+
+const CHALLENGES_CONTRACT_ADDRESS =
+  process.env.NEXT_PUBLIC_CHALLENGES_CONTRACT_ADDRESS || "0xYourContractAddress"
+const WLD_TOKEN_ADDRESS =
+  process.env.NEXT_PUBLIC_WLD_TOKEN_ADDRESS || "0xYourWLDTokenAddress"
+
 
 // Enums for challenge status and categories
 enum ChallengeStatus {
@@ -102,11 +110,13 @@ const getCategoryName = (category: ChallengeCategory): string => {
   return ChallengeCategory[category]
 }
 
+
 export default function ChallengesPage() {
   const [loading, setLoading] = useState(true)
   const [challenges, setChallenges] = useState<Challenge[]>([])
   const [selectedChallengeId, setSelectedChallengeId] = useState<number | null>(null)
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "in-progress" | "not-started">("all")
+
 
   // Load mock data
   useEffect(() => {
@@ -232,6 +242,90 @@ export default function ChallengesPage() {
     alert(`Video for challenge ${challengeId} submitted!`)
   }
 
+  const handleJoinChallenge = async (challenge: Challenge) => {
+    try {
+      // Ensure MiniKit is installed
+      if (!MiniKit.isInstalled()) {
+        console.error("World App not installed")
+        return
+      }
+
+      console.log(challenge, "challenge")
+      // Convert the stake amount to Wei string.
+      // Here we use challenge.minStake; in a real-world scenario you might allow user input.
+      const stakeAmount = challenge.minStake.toString()
+      const amountWei = ethers.utils.parseEther(stakeAmount).toString()
+      console.log(stakeAmount,amountWei,"stakeAmount")
+
+
+      // Create a deadline 30 minutes in the future
+      const deadline = Math.floor((Date.now() + 30 * 60 * 1000) / 1000).toString()
+
+      // Setup permit transfer data for token approval
+      const permitTransfer = {
+        permitted: {
+          token: WLD_TOKEN_ADDRESS,
+          amount: amountWei,
+        },
+        spender: CHALLENGES_CONTRACT_ADDRESS,
+        nonce: Date.now().toString(),
+        deadline,
+      }
+
+      // Format the arguments for the joinChallenge function
+      const joinChallengeArgs = [challenge.id.toString(), amountWei]
+
+      // ABI for the joinChallenge function
+      const functionABI = [
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "_challengeId",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "_stakeAmount",
+              type: "uint256",
+            },
+          ],
+          name: "joinChallenge",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+      ]
+
+      // Send the transaction using MiniKit
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [
+          {
+            address: CHALLENGES_CONTRACT_ADDRESS,
+            abi: functionABI,
+            functionName: "joinChallenge",
+            args: joinChallengeArgs,
+          },
+        ],
+        permit2: [permitTransfer],
+      })
+
+      if (finalPayload.status === "success") {
+        console.log("Successfully joined challenge:", finalPayload.transaction_id)
+        // Optionally update local state to reflect the join
+        setChallenges((prev) =>
+          prev.map((ch) =>
+            ch.id === challenge.id ? { ...ch, isJoined: true, myStake: challenge.minStake } : ch
+          )
+        )
+      } else {
+        console.error("Error joining challenge:", finalPayload)
+      }
+    } catch (error) {
+      console.error("Error joining challenge:", error)
+    }
+  }
+
   return (
     <main className="min-h-screen pb-20">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
@@ -304,7 +398,7 @@ export default function ChallengesPage() {
                       30 Days
                     </span>
                   </div>
-                  <button className="bg-white text-emerald-700 py-2 px-4 sm:px-6 rounded-lg font-medium hover:shadow-md transition-all inline-flex items-center text-sm sm:text-base">
+                  <button className="bg-white text-emerald-700 py-2 px-4 sm:px-6 rounded-lg font-medium hover:shadow-md transition-all inline-flex items-center text-sm sm:text-base" onClick={() => handleJoinChallenge(challenges[0])}>
                     Join Challenge
                     <span className="material-icons ml-1 text-sm">arrow_forward</span>
                   </button>
