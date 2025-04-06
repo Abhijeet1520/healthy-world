@@ -16,6 +16,10 @@ HealthyWorld is a comprehensive health and wellness tracker built as a mini app 
 - WLD Payments: Subscribe to premium plans using WLD or USDC through the World App payment system.
 - Social Features: Invite friends to join challenges and build a community around wellness.
 - Rewards System: Earn WLD tokens for completing health goals and challenges.
+- MediaPipe Exercise Tracking: Uses MediaPipe to track user movements in real-time, ensuring exercises are performed correctly.
+- ENS L2 Username Registration: Leverages an ENS L2 registrant on World Chain for decentralized username registration.
+- Durin: For generating unique usernames and ENS integration
+- World MiniKit: Integrates with World App for identity verification, payments, and sharing features.
 
 ## Getting Started
 
@@ -56,6 +60,8 @@ HealthyWorld is a comprehensive health and wellness tracker built as a mini app 
 - Next.js: React framework for server-rendered applications
 - World MiniKit: SDK for World App integration with verify, pay, and other commands
 - Tailwind CSS: Utility-first CSS framework for styling
+- Durin: For generating unique usernames and ENS integration
+- **MediaPipe:** For real-time exercise tracking and movement analysis
 
 ## World App Integration
 
@@ -130,12 +136,12 @@ Set the registry address in your environment configuration as shown:
 L2_REGISTRY_ADDRESS=0xba9f0059500df81eb4ab8ccd16fd3df379ba7c57
 ```
 
-
 HealthyWorld also supports an ENS-based username registration system on the **World Coin mainnet chain**. This is made possible through a custom registrar contract, **HealthyWorldRegistrarImplementation**, which inherits from the official ENS `BaseRegistrarImplementation`. Here’s how it works:
 
 1. **Username Registration**
    - When a user joins HealthyWorld, they can optionally register a username (e.g., `alice.healthyworld.eth`) via our ENS registrar on the World Coin mainnet chain.
    - This username is an NFT minted by the registrar, tying your identity to the on-chain domain name.
+   - **ENS L2 Registrant:** The registration is facilitated via an ENS L2 registrant, ensuring seamless integration with World Chain.
 
 2. **Leaderboard and Health Data**
    - The registrar contract also stores (or references) a leaderboard rank and other metrics associated with your username. This allows for on-chain verification of your achievements and ranking, making it easy to build trust in leaderboards.
