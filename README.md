@@ -6,6 +6,12 @@ Explore the HealthyWorld mini app in action by visiting our live demo:
 
 [HealthyWorld Live Demo](https://healthy-world.vercel.app/)
 
+## World Coin Mini App
+
+Check out the integrated mini app for a streamlined experience:
+
+[Open World Coin Mini App](https://worldcoin.org/mini-app?app_id=app_9b189afb0b482aaa44dd2ea83e20a589&draft_id=meta_061f08b05e59f133496afe5c5dc86d48)
+
 HealthyWorld is a comprehensive health and wellness tracker built as a mini app for the World App platform. It enables users to track their health metrics, set wellness goals, participate in challenges, and earn rewards.
 
 ## Features
@@ -61,7 +67,7 @@ HealthyWorld is a comprehensive health and wellness tracker built as a mini app 
 - World MiniKit: SDK for World App integration with verify, pay, and other commands
 - Tailwind CSS: Utility-first CSS framework for styling
 - Durin: For generating unique usernames and ENS integration
-- **MediaPipe:** For real-time exercise tracking and movement analysis
+- MediaPipe: For real-time exercise tracking and movement analysis
 
 ## World App Integration
 
