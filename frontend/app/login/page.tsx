@@ -109,18 +109,6 @@ export default function LoginPage() {
               </svg>
               <span>{getLoginButtonText()}</span>
             </button>
-
-            <div className="text-center text-sm text-gray-500">
-              <p>Don't have World ID yet?</p>
-              <a
-                href="https://worldcoin.org/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-emerald-600 hover:text-emerald-700 font-medium"
-              >
-                Download World App →
-              </a>
-            </div>
           </div>
 
           <div className="mt-6 pt-6 border-t border-gray-100 text-center">
